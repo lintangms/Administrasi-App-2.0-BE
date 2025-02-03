@@ -11,7 +11,7 @@ const kasbonRoutes = require("./routes/kasbonRoutes");
 const pengeluaranRoutes = require("./routes/pengeluaranRoutes");
 const divisiRoutes = require("./routes/divisiRoutes");
 const jabatanRoutes = require("./routes/jabatanRoutes");
-const KaryawanRoutes = require("./routes/karyawanRoutes"); // sudah ada di sini
+const KaryawanRoutes = require("./routes/karyawanRoutes");
 const shiftRoutes = require("./routes/shiftRoutes");
 const absensiRoutes = require("./routes/absensiRoutes");
 const boostingRoutes = require("./routes/boostingRoutes");
@@ -21,27 +21,15 @@ const farmingRoutes = require("./routes/farmingRoutes");
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5000; // Gunakan port dari .env atau default 5000
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '*'; // Menggunakan nilai dari environment variable, atau '*' untuk menerima semua origin
 
 // Setup static folder untuk file uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // CORS Configuration
-
-app.use(cors()
-HEAD
-  origin: 'https://absensi.harvestdigital.id', // Ganti dengan origin frontend Anda
-
-  origin: '', // Ganti dengan origin frontend Anda
-
-
 app.use(cors({
-
-  origin: 'https://absensi.harvestdigital.id', // Ganti dengan origin frontend Anda
-
-
-  origin: 'http://localhost:3000', // Ganti dengan origin frontend Anda
-
+  origin: FRONTEND_ORIGIN, // Menggunakan nilai dari environment variable atau '*' untuk menerima semua origin
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode yang diizinkan
   credentials: true // Jika menggunakan cookie atau header khusus
 }));
