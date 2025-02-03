@@ -24,7 +24,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Setup static folder untuk file uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Setup static folder untuk file uploads
+app.use('/uploads', (req, res, next) => {
+  console.log("Akses ke folder uploads:", req.url);
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
 
 // CORS Configuration
 app.use(cors({
