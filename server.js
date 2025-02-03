@@ -28,7 +28,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // CORS Configuration
 app.use(cors({
-  origin: 'http://localhost:3000', // Ganti dengan origin frontend Anda
+  origin: 'https://absensi.harvestdigital.id', // Ganti dengan origin frontend Anda
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode yang diizinkan
   credentials: true // Jika menggunakan cookie atau header khusus
 }));
