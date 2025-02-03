@@ -32,12 +32,17 @@ app.use('/uploads', (req, res, next) => {
 
 
 // CORS Configuration
+
 app.use(cors()
 HEAD
   origin: 'https://absensi.harvestdigital.id', // Ganti dengan origin frontend Anda
 
   origin: '', // Ganti dengan origin frontend Anda
->>>>>>> 80fbe1c346788b90074b34275588aa4598caa5b3
+80fbe1c346788b90074b34275588aa4598caa5b3
+
+app.use(cors({
+  origin: 'https://absensi.harvestdigital.id', // Ganti dengan origin frontend Anda
+ edf9eb40854cd6dfe91a2b1c990b97e3b50c9d88
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode yang diizinkan
   credentials: true // Jika menggunakan cookie atau header khusus
 }));
