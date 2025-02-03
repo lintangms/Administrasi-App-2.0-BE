@@ -24,11 +24,20 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Setup static folder untuk file uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Setup static folder untuk file uploads
+app.use('/uploads', (req, res, next) => {
+  console.log("Akses ke folder uploads:", req.url);
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
+
 
 // CORS Configuration
-app.use(cors({
+app.use(cors()
+HEAD
   origin: 'https://absensi.harvestdigital.id', // Ganti dengan origin frontend Anda
+
+  origin: '', // Ganti dengan origin frontend Anda
+>>>>>>> 80fbe1c346788b90074b34275588aa4598caa5b3
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode yang diizinkan
   credentials: true // Jika menggunakan cookie atau header khusus
 }));

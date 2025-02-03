@@ -55,3 +55,34 @@ exports.deleteKasbon = (req, res) => {
         res.status(200).json({ message: 'Kasbon berhasil dihapus' });
     });
 };
+
+exports.getKasbonOptions = (req, res) => {
+    const sql = "SHOW COLUMNS FROM kasbon LIKE 'dari'"; // Mengambil informasi tentang kolom 'dari'
+    
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'Kolom dari tidak ditemukan di tabel kasbon' });
+        }
+
+        // Ambil tipe data ENUM dari hasil query
+        const enumValues = results[0].Type;
+
+        // Periksa apakah nilai enum benar-benar ada
+        if (!enumValues) {
+            return res.status(500).json({ message: 'Tipe data enum untuk kolom dari tidak ditemukan' });
+        }
+
+        // Ekstrak nilai-nilai enum menggunakan regex yang lebih fleksibel
+        const match = enumValues.match(/\((.*)\)/);
+        if (!match || !match[1]) {
+            return res.status(500).json({ message: 'Format enum tidak valid atau tidak ditemukan' });
+        }
+
+        // Pisahkan nilai-nilai enum dan hapus tanda kutip
+        const options = match[1].split(',').map(value => value.trim().replace(/'/g, ''));
+
+        res.status(200).json(options);
+    });
+};
