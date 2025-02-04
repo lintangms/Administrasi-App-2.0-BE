@@ -29,7 +29,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // CORS Configuration
 app.use(cors({
-  origin: FRONTEND_ORIGIN, // Menggunakan nilai dari environment variable atau '*' untuk menerima semua origin
+  origin: FRONTEND_ORIGIN, // Menggunakan nilai dari environment variable
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Metode yang diizinkan
   credentials: true // Jika menggunakan cookie atau header khusus
 }));
