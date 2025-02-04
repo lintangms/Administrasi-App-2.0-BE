@@ -44,7 +44,7 @@ app.use("/api/game", gameRoutes);
 app.use("/api/inventaris", inventarisRoutes);
 app.use("/api/kasbon", kasbonRoutes);
 app.use("/api/pengeluaran", pengeluaranRoutes);
-app.use("/api/divisi", divisiRoutes);
+app.use("/api/divisi", divisiRoutes); 
 app.use("/api/jabatan", jabatanRoutes);
 app.use("/api/karyawan", KaryawanRoutes); // Ini sudah menangani upload file
 app.use("/api/shift", shiftRoutes);
