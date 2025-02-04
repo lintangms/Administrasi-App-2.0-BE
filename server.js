@@ -35,7 +35,7 @@ app.use(cors({
 }));
 
 // Middleware untuk parsing JSON
-app.use(bodyParser.json());
+app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
