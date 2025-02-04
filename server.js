@@ -46,7 +46,7 @@ app.use("/api/kasbon", kasbonRoutes);
 app.use("/api/pengeluaran", pengeluaranRoutes);
 app.use("/api/divisi", divisiRoutes); 
 app.use("/api/jabatan", jabatanRoutes);
-app.use("/api/karyawan", KaryawanRoutes); // Ini sudah menangani upload file
+app.use("/api/karyawan", KaryawanRoutes); 
 app.use("/api/shift", shiftRoutes);
 app.use("/api/absensi", absensiRoutes);
 app.use("/api/boosting", boostingRoutes);
