@@ -10,15 +10,16 @@ exports.getAllBoosting = (req, res) => {
 };
 
 // Get single record
-exports.getBoostingById = (req, res) => {
-    const { id } = req.params;
-    const sql = 'SELECT * FROM perolehan_boosting WHERE id_boosting = ?';
-    db.query(sql, [id], (err, results) => {
+exports.getBoostingByNip = (req, res) => {
+    const { NIP } = req.params;
+    const sql = 'SELECT * FROM perolehan_boosting WHERE NIP = ?';
+    db.query(sql, [NIP], (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
         if (results.length === 0) return res.status(404).json({ message: 'Data boosting tidak ditemukan' });
         res.status(200).json({ message: 'Data boosting berhasil diambil', data: results[0] });
     });
 };
+
 
 // Create record
 exports.createBoosting = (req, res) => {

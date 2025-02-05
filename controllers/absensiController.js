@@ -3,7 +3,7 @@ const QRCode = require("qrcode");
 
 exports.generateQRCode = async (req, res) => {
     const { NIP } = req.params;
-    const absensiURL = `http://192.168.1.104:5000/api/absensi/absensiqr/${NIP}`;
+    const absensiURL = `https://absensi.harvestdigital.id/api/absensi/absensiqr/${NIP}`;
 
     try {
         const qrCodeDataURL = await QRCode.toDataURL(absensiURL);
@@ -11,6 +11,46 @@ exports.generateQRCode = async (req, res) => {
     } catch (err) {
         res.status(500).json({ message: "Gagal membuat QR Code", error: err });
     }
+};
+
+
+exports.absensiMasukByQR = (req, res) => {
+    const { NIP } = req.params;
+
+    if (!NIP) {
+        return res.status(400).json({ message: "NIP wajib diisi" });
+    }
+
+    // Periksa apakah NIP ada di tabel karyawan
+    const checkNIP = "SELECT NIP, id_jabatan FROM karyawan WHERE NIP = ?";
+    db.query(checkNIP, [NIP], (checkErr, results) => {
+        if (checkErr) return res.status(500).json({ message: "Error pada server", error: checkErr });
+
+        if (results.length === 0) {
+            return res.status(400).json({ message: "NIP tidak ditemukan di database karyawan" });
+        }
+
+        const id_jabatan = results[0].id_jabatan;
+
+        // Periksa absensi terakhir
+        const checkAbsensi = "SELECT jam_pulang FROM absensi WHERE NIP = ? ORDER BY jam_masuk DESC LIMIT 1";
+        db.query(checkAbsensi, [NIP], (absensiErr, absensiResults) => {
+            if (absensiErr) return res.status(500).json({ message: "Error pada server", error: absensiErr });
+
+            // Jika absen terakhir belum ada jam_pulang, tidak boleh absen masuk lagi
+            if (absensiResults.length > 0 && !absensiResults[0].jam_pulang) {
+                return res.status(400).json({ message: "Anda sudah melakukan absensi masuk. Silakan absen pulang terlebih dahulu." });
+            }
+
+            // Insert absensi baru untuk "Masuk"
+            const sqlMasuk = "INSERT INTO absensi (NIP, id_jabatan, status, jam_masuk, tanggal) VALUES (?, ?, 'Masuk', NOW(), DATE(NOW()))";
+            db.query(sqlMasuk, [NIP, id_jabatan], (err, results) => {
+                if (err) return res.status(500).json({ message: "Error pada server", error: err });
+
+                return res.status(201).json({ message: "Absensi Masuk berhasil dicatat", id_absensi: results.insertId });
+            });
+        });
+    });
 };
 
 // Absensi Masuk
@@ -130,10 +170,11 @@ exports.getAllAbsensi = (req, res) => {
 };
 
 // Get Absensi By ID
-exports.getAbsensiById = (req, res) => {
-    const { id_absensi } = req.params;
-    const sql = 'SELECT * FROM absensi WHERE id_absensi = ?';
-    db.query(sql, [id_absensi], (err, results) => {
+// Mengambil absensi berdasarkan NIP
+exports.getAbsensiByNip = (req, res) => {
+    const { NIP } = req.params;
+    const sql = 'SELECT * FROM absensi WHERE NIP = ?';
+    db.query(sql, [NIP], (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
         if (results.length === 0) return res.status(404).json({ message: 'Absensi tidak ditemukan' });
         res.status(200).json(results[0]);
@@ -225,41 +266,46 @@ exports.getAbsensiRekapByNIP = (req, res) => {
 };
 
 
-exports.absensiMasukByQR = (req, res) => {
+
+exports.QRCode = async (req, res) => {
     const { NIP } = req.params;
-
-    if (!NIP) {
-        return res.status(400).json({ message: "NIP wajib diisi" });
-    }
-
-    // Periksa apakah NIP ada di tabel karyawan
-    const checkNIP = "SELECT NIP, id_jabatan FROM karyawan WHERE NIP = ?";
-    db.query(checkNIP, [NIP], (checkErr, results) => {
-        if (checkErr) return res.status(500).json({ message: "Error pada server", error: checkErr });
-
-        if (results.length === 0) {
-            return res.status(400).json({ message: "NIP tidak ditemukan di database karyawan" });
+    
+    // Query untuk mengambil data karyawan berdasarkan NIP
+    const query = 'SELECT NIP, nama FROM karyawan WHERE NIP = ?';
+    
+    db.query(query, [NIP], async (err, results) => {
+        if (err) {
+            console.error('Error fetching karyawan data:', err);
+            return res.status(500).json({ message: "Gagal mengambil data karyawan", error: err });
         }
 
-        const id_jabatan = results[0].id_jabatan;
+        // Jika data karyawan tidak ditemukan
+        if (results.length === 0) {
+            return res.status(404).json({ message: "Karyawan tidak ditemukan" });
+        }
 
-        // Periksa absensi terakhir
-        const checkAbsensi = "SELECT jam_pulang FROM absensi WHERE NIP = ? ORDER BY jam_masuk DESC LIMIT 1";
-        db.query(checkAbsensi, [NIP], (absensiErr, absensiResults) => {
-            if (absensiErr) return res.status(500).json({ message: "Error pada server", error: absensiErr });
+        // Ambil nama karyawan dari hasil query
+        const karyawan = results[0];
+        const { nama } = karyawan;
 
-            // Jika absen terakhir belum ada jam_pulang, tidak boleh absen masuk lagi
-            if (absensiResults.length > 0 && !absensiResults[0].jam_pulang) {
-                return res.status(400).json({ message: "Anda sudah melakukan absensi masuk. Silakan absen pulang terlebih dahulu." });
-            }
+        // Membuat URL absensi dengan menyertakan NIP
+        const absensiURL = `https://absensi.harvestdigital.id/api/absensi/scanabsensi/${NIP}`;
 
-            // Insert absensi baru untuk "Masuk"
-            const sqlMasuk = "INSERT INTO absensi (NIP, id_jabatan, status, jam_masuk, tanggal) VALUES (?, ?, 'Masuk', NOW(), DATE(NOW()))";
-            db.query(sqlMasuk, [NIP, id_jabatan], (err, results) => {
-                if (err) return res.status(500).json({ message: "Error pada server", error: err });
-
-                return res.status(201).json({ message: "Absensi Masuk berhasil dicatat", id_absensi: results.insertId });
+        try {
+            // Membuat QR Code dari URL absensi
+            const qrCodeDataURL = await QRCode.toDataURL(absensiURL);
+            
+            // Kirim QR Code dalam response
+            res.json({
+                qrCode: qrCodeDataURL,
+                karyawan: {
+                    NIP: NIP,
+                    nama: nama
+                }
             });
-        });
+        } catch (err) {
+            console.error('Error generating QR code:', err);
+            res.status(500).json({ message: "Gagal membuat QR Code", error: err });
+        }
     });
 };
