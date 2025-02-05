@@ -265,12 +265,13 @@ exports.getAbsensiRekapByNIP = (req, res) => {
     });
 };
 
-
 exports.scanAbsensi = (req, res) => {
     const { NIP } = req.params;
 
+    console.log(`Menerima permintaan scan absensi untuk NIP: ${NIP}`);
+
     // Query untuk mengambil data karyawan berdasarkan NIP
-    const query = 'SELECT NIP, nama FROM karyawan WHERE NIP = ?';
+    const query = 'SELECT NIP, nama, COALESCE(id_jabatan, "") AS id_jabatan FROM karyawan WHERE NIP = ?';
 
     db.query(query, [NIP], (err, results) => {
         if (err) {
@@ -280,17 +281,21 @@ exports.scanAbsensi = (req, res) => {
 
         // Jika data karyawan tidak ditemukan
         if (results.length === 0) {
+            console.warn(`Karyawan dengan NIP ${NIP} tidak ditemukan.`);
             return res.status(404).json({ message: "Karyawan tidak ditemukan" });
         }
 
         // Ambil data karyawan
         const karyawan = results[0];
-        const { nama, NIP: karyawanNIP } = karyawan;
+        const { nama, id_jabatan, NIP: karyawanNIP } = karyawan;
+
+        console.log(`Data karyawan ditemukan: ${JSON.stringify(karyawan)}`);
 
         // Mengirim data karyawan
         res.json({
             NIP: karyawanNIP,
-            nama: nama
+            nama: nama,
+            id_jabatan: id_jabatan || ""  // Pastikan tidak undefined/null
         });
     });
 };
