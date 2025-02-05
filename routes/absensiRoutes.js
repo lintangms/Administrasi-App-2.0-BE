@@ -18,6 +18,6 @@ router.get('/absensiqr/:NIP', absensiController.absensiMasukByQR);
 router.get("/generateqr/:NIP", absensiController.generateQRCode);
 
 
-router.get('/scanqr/:NIP', absensiController.QRCode)
+router.get('/scanqr/:NIP', absensiController.scanAbsensi)
 
 module.exports = router;

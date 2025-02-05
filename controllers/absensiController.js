@@ -266,14 +266,12 @@ exports.getAbsensiRekapByNIP = (req, res) => {
 };
 
 
-const QRCode = require('qrcode');  // Pastikan QRCode sudah diimport
-
-exports.QRCode = async (req, res) => {
+exports.scanAbsensi = (req, res) => {
     const { NIP } = req.params;
-    
+
     // Query untuk mengambil data karyawan berdasarkan NIP
     const query = 'SELECT NIP, nama FROM karyawan WHERE NIP = ?';
-    
+
     db.query(query, [NIP], (err, results) => {
         if (err) {
             console.error('Error fetching karyawan data:', err);
@@ -285,33 +283,14 @@ exports.QRCode = async (req, res) => {
             return res.status(404).json({ message: "Karyawan tidak ditemukan" });
         }
 
-        // Ambil nama karyawan dari hasil query
+        // Ambil data karyawan
         const karyawan = results[0];
         const { nama, NIP: karyawanNIP } = karyawan;
 
-        // Membuat URL absensi dengan menyertakan NIP
-        const absensiURL = `https://absensi.harvestdigital.id/api/absensi/scanabsensi/${karyawanNIP}`;
-
-        try {
-            // Membuat QR Code dari URL absensi
-            QRCode.toDataURL(absensiURL, (err, qrCodeDataURL) => {
-                if (err) {
-                    console.error('Error generating QR Code:', err);
-                    return res.status(500).json({ message: "Gagal membuat QR Code", error: err });
-                }
-
-                // Kirim QR Code dan data karyawan dalam response
-                res.json({
-                    qrCode: qrCodeDataURL,  // Data URL untuk QR code
-                    karyawan: {
-                        NIP: karyawanNIP,
-                        nama: nama
-                    }
-                });
-            });
-        } catch (err) {
-            console.error('Error generating QR code:', err);
-            res.status(500).json({ message: "Gagal membuat QR Code", error: err });
-        }
+        // Mengirim data karyawan
+        res.json({
+            NIP: karyawanNIP,
+            nama: nama
+        });
     });
 };
