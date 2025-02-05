@@ -271,31 +271,65 @@ exports.scanAbsensi = (req, res) => {
     console.log(`Menerima permintaan scan absensi untuk NIP: ${NIP}`);
 
     // Query untuk mengambil data karyawan berdasarkan NIP
-    const query = 'SELECT NIP, nama, COALESCE(id_jabatan, "") AS id_jabatan FROM karyawan WHERE NIP = ?';
+    const queryKaryawan = 'SELECT NIP, nama, COALESCE(id_jabatan, "") AS id_jabatan FROM karyawan WHERE NIP = ?';
 
-    db.query(query, [NIP], (err, results) => {
+    db.query(queryKaryawan, [NIP], (err, resultsKaryawan) => {
         if (err) {
             console.error('Error fetching karyawan data:', err);
             return res.status(500).json({ message: "Gagal mengambil data karyawan", error: err });
         }
 
         // Jika data karyawan tidak ditemukan
-        if (results.length === 0) {
+        if (resultsKaryawan.length === 0) {
             console.warn(`Karyawan dengan NIP ${NIP} tidak ditemukan.`);
             return res.status(404).json({ message: "Karyawan tidak ditemukan" });
         }
 
         // Ambil data karyawan
-        const karyawan = results[0];
+        const karyawan = resultsKaryawan[0];
         const { nama, id_jabatan, NIP: karyawanNIP } = karyawan;
 
         console.log(`Data karyawan ditemukan: ${JSON.stringify(karyawan)}`);
 
-        // Mengirim data karyawan
-        res.json({
-            NIP: karyawanNIP,
-            nama: nama,
-            id_jabatan: id_jabatan || ""  // Pastikan tidak undefined/null
+        // Query untuk mengambil absensi terakhir berdasarkan NIP
+        const queryAbsensi = 'SELECT id_absensi, jam_masuk, jam_pulang FROM absensi WHERE NIP = ? ORDER BY id_absensi DESC LIMIT 1';
+
+        db.query(queryAbsensi, [NIP], (err, resultsAbsensi) => {
+            if (err) {
+                console.error('Error fetching absensi data:', err);
+                return res.status(500).json({ message: "Gagal mengambil data absensi", error: err });
+            }
+
+            // Jika tidak ada data absensi untuk karyawan ini
+            if (resultsAbsensi.length === 0) {
+                console.warn(`Absensi untuk karyawan dengan NIP ${NIP} tidak ditemukan.`);
+                return res.status(404).json({ message: "Absensi tidak ditemukan" });
+            }
+
+            const absensi = resultsAbsensi[0];
+            const { id_absensi, jam_masuk, jam_pulang } = absensi;
+
+            console.log(`Data absensi ditemukan: ${JSON.stringify(absensi)}`);
+
+            // Jika jam_pulang NULL, maka absensi ini bisa diperbarui
+            if (!jam_pulang) {
+                // Kirimkan id_absensi yang dapat digunakan untuk update data pulang
+                res.json({
+                    NIP: karyawanNIP,
+                    nama: nama,
+                    id_jabatan: id_jabatan || "",  // Pastikan tidak undefined/null
+                    id_absensi: id_absensi
+                });
+            } else {
+                // Jika jam_pulang sudah ada, berarti absensi sudah selesai dan tidak perlu update
+                console.log(`Absensi dengan ID ${id_absensi} sudah selesai (jam_pulang sudah ada).`);
+                res.json({
+                    message: "Absensi sudah selesai, jam_pulang sudah tercatat.",
+                    NIP: karyawanNIP,
+                    nama: nama,
+                    id_jabatan: id_jabatan || ""
+                });
+            }
         });
     });
 };
