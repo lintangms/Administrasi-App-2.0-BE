@@ -16,6 +16,7 @@ const shiftRoutes = require("./routes/shiftRoutes");
 const absensiRoutes = require("./routes/absensiRoutes");
 const boostingRoutes = require("./routes/boostingRoutes");
 const farmingRoutes = require("./routes/farmingRoutes");
+const absenRoutes = require("./routes/absenRoutes");
 
 // Konfigurasi environment variable
 dotenv.config();
@@ -51,6 +52,7 @@ app.use("/api/shift", shiftRoutes);
 app.use("/api/absensi", absensiRoutes);
 app.use("/api/boosting", boostingRoutes);
 app.use("/api/farming", farmingRoutes);
+app.use("/api/absen", absenRoutes);
 
 // Jalankan server
 app.listen(PORT, () => {
