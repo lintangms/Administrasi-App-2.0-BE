@@ -2,39 +2,44 @@ const db = require('../config/db');
 const md5 = require('md5');
 const multer = require('multer');
 const path = require('path');
-const crypto = require('crypto');
-
 
 // Konfigurasi Multer
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads'); // Pastikan folder 'uploads' sudah ada
+        cb(null, 'uploads');
     },
     filename: (req, file, cb) => {
-        cb(null, Date.now() + path.extname(file.originalname)); // Menyimpan file dengan nama unik
+        cb(null, Date.now() + path.extname(file.originalname));
     }
 });
 
 const upload = multer({
     storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // Maksimal ukuran file 5MB
+    limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        const fileTypes = /jpeg|jpg|png/; // Hanya terima jpeg, jpg, png
+        const fileTypes = /jpeg|jpg|png/;
         const extname = fileTypes.test(path.extname(file.originalname).toLowerCase());
         const mimetype = fileTypes.test(file.mimetype);
-
         if (extname && mimetype) {
             return cb(null, true);
         } else {
             return cb(new Error('Only images (jpeg, jpg, png) are allowed!'));
         }
     }
-}).single('gambar'); // Pastikan 'gambar' sesuai dengan field name di Postman
+}).single('gambar');
+
+const getId = (table, column, value) => {
+    return new Promise((resolve, reject) => {
+        const sql = `SELECT id_${table} FROM ${table} WHERE ${column} = ?`;
+        db.query(sql, [value], (err, result) => {
+            if (err) return reject(err);
+            if (result.length === 0) return resolve(null);
+            resolve(result[0][`id_${table}`]);
+        });
+    });
+};
 
 exports.createKaryawan = (req, res) => {
-    console.log('Headers:', req.headers);
-    console.log('Body:', req.body);
-    console.log('File:', req.file);
 
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
@@ -45,56 +50,129 @@ exports.createKaryawan = (req, res) => {
     const {
         NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
         nama_jabatan, nama_divisi, username, password, ket,
-        id_akun = null, id_game = null, id_shift = null // Opsional, bisa NULL
+        username_akun, nama_game, nama_shift // Ubah ID menjadi pencarian nama
     } = req.body;
-    
+
     const hashedPassword = md5(password);
     const gambar = req.file.filename;
 
-    // Cari ID Jabatan berdasarkan nama_jabatan
+    // Cari ID Jabatan
     const sqlJabatan = `SELECT id_jabatan FROM jabatan WHERE nama_jabatan = ?`;
     db.query(sqlJabatan, [nama_jabatan], (err, jabatanResult) => {
-        if (err) {
-            console.error('Error fetching id_jabatan:', err);
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
-        if (jabatanResult.length === 0) {
-            return res.status(400).json({ message: 'Jabatan tidak ditemukan' });
-        }
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (jabatanResult.length === 0) return res.status(400).json({ message: 'Jabatan tidak ditemukan' });
         const id_jabatan = jabatanResult[0].id_jabatan;
 
-        // Cari ID Divisi berdasarkan nama_divisi
+        // Cari ID Divisi
         const sqlDivisi = `SELECT id_divisi FROM divisi WHERE nama_divisi = ?`;
         db.query(sqlDivisi, [nama_divisi], (err, divisiResult) => {
-            if (err) {
-                console.error('Error fetching id_divisi:', err);
-                return res.status(500).json({ message: 'Database error', error: err });
-            }
-            if (divisiResult.length === 0) {
-                return res.status(400).json({ message: 'Divisi tidak ditemukan' });
-            }
+            if (err) return res.status(500).json({ message: 'Database error', error: err });
+            if (divisiResult.length === 0) return res.status(400).json({ message: 'Divisi tidak ditemukan' });
             const id_divisi = divisiResult[0].id_divisi;
 
-            // Insert data ke tabel karyawan
-            const sql = `
-                INSERT INTO karyawan (NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja, 
-                id_jabatan, id_divisi, username, password, ket, gambar, id_akun, id_game, id_shift)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
+            // Cari ID Akun berdasarkan username
+            const sqlAkun = `SELECT id_akun FROM akun WHERE username = ?`;
+            db.query(sqlAkun, [username_akun], (err, akunResult) => {
+                if (err) return res.status(500).json({ message: 'Database error', error: err });
+                const id_akun = akunResult.length > 0 ? akunResult[0].id_akun : null;
 
-            db.query(sql, [NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
-                id_jabatan, id_divisi, username, hashedPassword, ket, gambar, id_akun, id_game, id_shift], (err, result) => {
-                if (err) {
-                    console.error('SQL Error:', err);
-                    return res.status(500).json({ message: 'Error creating karyawan', error: err });
-                }
+                // Cari ID Game berdasarkan nama_game
+                const sqlGame = `SELECT id_game FROM game WHERE nama_game = ?`;
+                db.query(sqlGame, [nama_game], (err, gameResult) => {
+                    if (err) return res.status(500).json({ message: 'Database error', error: err });
+                    const id_game = gameResult.length > 0 ? gameResult[0].id_game : null;
 
-                console.log('Karyawan created successfully with ID:', result.insertId);
-                res.status(201).json({ message: 'Karyawan created successfully', karyawanId: result.insertId });
+                    // Cari ID Shift berdasarkan nama_shift
+                    const sqlShift = `SELECT id_shift FROM shift WHERE nama_shift = ?`;
+                    db.query(sqlShift, [nama_shift], (err, shiftResult) => {
+                        if (err) return res.status(500).json({ message: 'Database error', error: err });
+                        const id_shift = shiftResult.length > 0 ? shiftResult[0].id_shift : null;
+
+                        // Insert data karyawan
+                        const sql = `
+                            INSERT INTO karyawan (NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja, 
+                            id_jabatan, id_divisi, username, password, ket, gambar, id_akun, id_game, id_shift)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        `;
+
+                        db.query(sql, [NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
+                            id_jabatan, id_divisi, username, hashedPassword, ket, gambar, id_akun, id_game, id_shift], (err, result) => {
+                            if (err) return res.status(500).json({ message: 'Error creating karyawan', error: err });
+
+                            console.log('Karyawan created successfully with ID:', result.insertId);
+                            res.status(201).json({ message: 'Karyawan created successfully', karyawanId: result.insertId });
+                        });
+                    });
+                });
             });
         });
     });
 };
+
+
+exports.updateKaryawan = (req, res) => {
+
+    const { id_karyawan } = req.params;
+    const {
+        NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
+        nama_jabatan, nama_divisi, username, password, ket,
+        username_akun, nama_game, nama_shift
+    } = req.body;
+
+    let hashedPassword = password ? md5(password) : null;
+
+    const sqlJabatan = `SELECT id_jabatan FROM jabatan WHERE nama_jabatan = ?`;
+    db.query(sqlJabatan, [nama_jabatan], (err, jabatanResult) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (jabatanResult.length === 0) return res.status(400).json({ message: 'Jabatan tidak ditemukan' });
+        const id_jabatan = jabatanResult[0].id_jabatan;
+
+        const sqlDivisi = `SELECT id_divisi FROM divisi WHERE nama_divisi = ?`;
+        db.query(sqlDivisi, [nama_divisi], (err, divisiResult) => {
+            if (err) return res.status(500).json({ message: 'Database error', error: err });
+            if (divisiResult.length === 0) return res.status(400).json({ message: 'Divisi tidak ditemukan' });
+            const id_divisi = divisiResult[0].id_divisi;
+
+            const sqlAkun = `SELECT id_akun FROM akun WHERE username = ?`;
+            db.query(sqlAkun, [username_akun], (err, akunResult) => {
+                if (err) return res.status(500).json({ message: 'Database error', error: err });
+                const id_akun = akunResult.length > 0 ? akunResult[0].id_akun : null;
+
+                const sqlGame = `SELECT id_game FROM game WHERE nama_game = ?`;
+                db.query(sqlGame, [nama_game], (err, gameResult) => {
+                    if (err) return res.status(500).json({ message: 'Database error', error: err });
+                    const id_game = gameResult.length > 0 ? gameResult[0].id_game : null;
+
+                    const sqlShift = `SELECT id_shift FROM shift WHERE nama_shift = ?`;
+                    db.query(sqlShift, [nama_shift], (err, shiftResult) => {
+                        if (err) return res.status(500).json({ message: 'Database error', error: err });
+                        const id_shift = shiftResult.length > 0 ? shiftResult[0].id_shift : null;
+
+                        const sql = `
+                            UPDATE karyawan SET
+                            NIP = ?, nama = ?, alamat = ?, telp = ?, ttl = ?, pendidikan = ?, 
+                            status = ?, mulai_bekerja = ?, id_jabatan = ?, id_divisi = ?, 
+                            username = ?, password = COALESCE(?, password), 
+                            ket = ?, id_akun = ?, id_game = ?, id_shift = ?
+                            WHERE id_karyawan = ?
+                        `;
+
+                        db.query(sql, [NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
+                            id_jabatan, id_divisi, username, hashedPassword, ket,
+                            id_akun, id_game, id_shift, id_karyawan], (err, result) => {
+                            if (err) return res.status(500).json({ message: 'Error updating karyawan', error: err });
+                            if (result.affectedRows === 0) return res.status(404).json({ message: 'Karyawan tidak ditemukan' });
+
+                            console.log('Karyawan updated successfully:', id_karyawan);
+                            res.status(200).json({ message: 'Karyawan updated successfully' });
+                        });
+                    });
+                });
+            });
+        });
+    });
+};
+
 
 // Fungsi lainnya tetap sama...
 
@@ -218,74 +296,7 @@ exports.getKaryawanById = (req, res) => {
 
 
 
-exports.updateKaryawan = (req, res) => {
-    console.log('Headers:', req.headers);
-    console.log('Body:', req.body);
-    console.log('File:', req.file);
 
-    const { id_karyawan } = req.params; // Ambil ID karyawan dari URL params
-    const {
-        NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
-        nama_jabatan, nama_divisi, username, password, ket,
-        id_akun = null, id_game = null, id_shift = null
-    } = req.body;
-
-    let hashedPassword = password ? md5(password) : null; // Hanya hash jika password diubah
-    let gambar = req.file ? req.file.filename : null; // Simpan gambar baru jika diunggah
-
-    // Cari ID Jabatan berdasarkan nama_jabatan (jika ada)
-    const sqlJabatan = `SELECT id_jabatan FROM jabatan WHERE nama_jabatan = ?`;
-    db.query(sqlJabatan, [nama_jabatan], (err, jabatanResult) => {
-        if (err) {
-            console.error('Error fetching id_jabatan:', err);
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
-        if (jabatanResult.length === 0) {
-            return res.status(400).json({ message: 'Jabatan tidak ditemukan' });
-        }
-        const id_jabatan = jabatanResult[0].id_jabatan;
-
-        // Cari ID Divisi berdasarkan nama_divisi (jika ada)
-        const sqlDivisi = `SELECT id_divisi FROM divisi WHERE nama_divisi = ?`;
-        db.query(sqlDivisi, [nama_divisi], (err, divisiResult) => {
-            if (err) {
-                console.error('Error fetching id_divisi:', err);
-                return res.status(500).json({ message: 'Database error', error: err });
-            }
-            if (divisiResult.length === 0) {
-                return res.status(400).json({ message: 'Divisi tidak ditemukan' });
-            }
-            const id_divisi = divisiResult[0].id_divisi;
-
-            // Update data karyawan di database
-            const sql = `
-                UPDATE karyawan SET
-                NIP = ?, nama = ?, alamat = ?, telp = ?, ttl = ?, pendidikan = ?, 
-                status = ?, mulai_bekerja = ?, id_jabatan = ?, id_divisi = ?, 
-                username = ?, password = COALESCE(?, password), 
-                ket = ?, gambar = COALESCE(?, gambar),
-                id_akun = ?, id_game = ?, id_shift = ?
-                WHERE id_karyawan = ?
-            `;
-
-            db.query(sql, [NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
-                id_jabatan, id_divisi, username, hashedPassword, ket, gambar,
-                id_akun, id_game, id_shift, id_karyawan], (err, result) => {
-                if (err) {
-                    console.error('SQL Error:', err);
-                    return res.status(500).json({ message: 'Error updating karyawan', error: err });
-                }
-
-                if (result.affectedRows === 0) {
-                    return res.status(404).json({ message: 'Karyawan tidak ditemukan' });
-                }
-
-                console.log('Karyawan updated successfully:', id_karyawan);
-                res.status(200).json({ message: 'Karyawan updated successfully' });
-            });
-        });
-    });
-};
 
 // Delete a karyawan
 exports.deleteKaryawan = (req, res) => {
