@@ -131,9 +131,11 @@ exports.scanQR = (req, res) => {
             return res.status(404).json({ message: "Data tidak ditemukan" });
         }
 
-        res.status(200).json({
-            message: "Data berhasil ditemukan",
-            data: results[0]
-        });
+        // Ambil data NIP & nama
+        const { NIP, nama } = results[0];
+
+        // Redirect ke frontend dengan query parameter
+        const frontendURL = `https://absensi.harvestdigital.id/scan_absensi?nip=${NIP}&nama=${encodeURIComponent(nama)}`;
+        res.redirect(frontendURL);
     });
 };
