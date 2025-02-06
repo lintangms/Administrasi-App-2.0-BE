@@ -135,7 +135,7 @@ exports.scanQR = (req, res) => {
         const { NIP, nama } = results[0];
 
         // Redirect ke frontend dengan query parameter
-        const frontendURL = `https://cdf9-117-103-68-63.ngrok-free.app/scan_absensi?nip=${NIP}&nama=${encodeURIComponent(nama)}`;
+        const frontendURL = `https://absensi.harvestdigital.id/scan_absensi?nip=${NIP}&nama=${encodeURIComponent(nama)}`;
         res.redirect(frontendURL);
     });
 };
