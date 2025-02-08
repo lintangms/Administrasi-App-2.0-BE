@@ -6,6 +6,7 @@ const kasbonController = require('../controllers/kasbonController');
 router.get('/get', kasbonController.getAllKasbon); // Menampilkan semua kasbon
 // router.get('/:id', kasbonController.getKasbonById); // Menampilkan kasbon berdasarkan ID
 router.get('/options', kasbonController.getKasbonOptions); // Menampilkan opsi kasbon
+router.get('/get/:NIP', kasbonController.getKasbonByNip)
 
 router.post('/add', kasbonController.createKasbon); // Menambah kasbon
 router.put('/:id', kasbonController.updateKasbon); // Update kasbon

@@ -139,3 +139,31 @@ exports.scanQR = (req, res) => {
         res.redirect(frontendURL);
     });
 };
+
+exports.getAbsenByNIP = (req, res) => {
+    const { NIP } = req.params;
+    const { start_date, end_date } = req.query;
+
+    let sql = `SELECT * FROM absen WHERE NIP = ?`;
+    let params = [NIP];
+
+    // Tambahkan filter tanggal jika diberikan
+    if (start_date && end_date) {
+        sql += ` AND tanggal BETWEEN ? AND ?`;
+        params.push(start_date, end_date);
+    }
+
+    sql += ` ORDER BY tanggal DESC, waktu DESC`;
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error pada server", error: err });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: "Data absen tidak ditemukan untuk NIP ini" });
+        }
+
+        res.status(200).json({ message: "Data absen berhasil diambil", data: results });
+    });
+};

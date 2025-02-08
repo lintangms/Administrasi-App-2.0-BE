@@ -9,27 +9,49 @@ exports.getAllBoosting = (req, res) => {
     });
 };
 
-// Get single record
-exports.getBoostingByNip = (req, res) => {
-    const { NIP } = req.params;
-    const sql = 'SELECT * FROM perolehan_boosting WHERE NIP = ?';
-    db.query(sql, [NIP], (err, results) => {
-        if (err) return res.status(500).json({ message: 'Error pada server', error: err });
-        if (results.length === 0) return res.status(404).json({ message: 'Data boosting tidak ditemukan' });
-        res.status(200).json({ message: 'Data boosting berhasil diambil', data: results[0] });
-    });
-};
+// Get all boosting records by NIP with date filtering
+    exports.getBoostingByNip = (req, res) => {
+        const { NIP } = req.params;
+        const { start_date, end_date } = req.query;
+
+        let sql = 'SELECT * FROM perolehan_boosting WHERE NIP = ?';
+        let params = [NIP];
+
+        // Tambahkan filter tanggal jika diberikan
+        if (start_date && end_date) {
+            sql += ' AND periode BETWEEN ? AND ?';
+            params.push(start_date, end_date);
+        }
+
+        db.query(sql, params, (err, results) => {
+            if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+            if (results.length === 0) return res.status(404).json({ message: 'Data boosting tidak ditemukan' });
+            res.status(200).json({ message: 'Data boosting berhasil diambil', data: results });
+        });
+    };
 
 
 // Create record
 exports.createBoosting = (req, res) => {
-    const { NIP, nominal, periode, ket } = req.body;
-    const sql = 'INSERT INTO perolehan_boosting (NIP, nominal, periode, ket) VALUES (?, ?, ?, ?)';
-    db.query(sql, [NIP, nominal, periode, ket], (err, results) => {
+    const { NIP, nominal, periode, ket, nama_game } = req.body;
+
+    // Cari id_game berdasarkan nama_game
+    const sqlGetGame = 'SELECT id_game FROM game WHERE nama_game = ?';
+    db.query(sqlGetGame, [nama_game], (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
-        res.status(201).json({ 
-            message: 'Data boosting berhasil ditambahkan', 
-            data: { id_boosting: results.insertId, NIP, nominal, periode, ket } 
+        if (results.length === 0) return res.status(404).json({ message: 'Game tidak ditemukan' });
+
+        const id_game = results[0].id_game;
+
+        // Insert data ke tabel perolehan_boosting
+        const sqlInsert = 'INSERT INTO perolehan_boosting (NIP, nominal, periode, ket, id_game) VALUES (?, ?, ?, ?, ?)';
+        db.query(sqlInsert, [NIP, nominal, periode, ket, id_game], (err, insertResults) => {
+            if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+
+            res.status(201).json({
+                message: 'Data boosting berhasil ditambahkan',
+                data: { id_boosting: insertResults.insertId, NIP, nominal, periode, ket, id_game, nama_game }
+            });
         });
     });
 };
