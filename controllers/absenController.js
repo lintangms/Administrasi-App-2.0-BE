@@ -167,3 +167,48 @@ exports.getAbsenByNIP = (req, res) => {
         res.status(200).json({ message: "Data absen berhasil diambil", data: results });
     });
 };
+
+exports.getAllAbsensi = (req, res) => {
+    const { nama, tanggal } = req.query;
+
+    let sql = `
+        SELECT 
+            k.NIP, 
+            k.nama,
+            COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN a.tanggal END), NULL) AS tanggal_masuk,
+            COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_masuk,
+            COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN a.tanggal END), NULL) AS tanggal_pulang,
+            COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_pulang
+        FROM karyawan k
+        LEFT JOIN absen a ON k.NIP = a.NIP
+        WHERE 1=1
+    `;
+
+    let params = [];
+
+    // Gunakan tanggal yang dipilih, jika tidak ada gunakan tanggal hari ini
+    const filterTanggal = tanggal || new Date().toISOString().split('T')[0];
+
+    // Tambahkan tanggal ke parameter query sebanyak 4 kali (karena dipakai dalam 4 kondisi)
+    params.push(filterTanggal, filterTanggal, filterTanggal, filterTanggal);
+
+    // Filter berdasarkan nama jika diberikan
+    if (nama) {
+        sql += ` AND k.nama LIKE ?`;
+        params.push(`%${nama}%`);
+    }
+
+    sql += ` GROUP BY k.NIP, k.nama ORDER BY k.nama ASC`;
+
+    db.query(sql, params, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: "Error pada server", error: err });
+        }
+
+        if (results.length === 0) {
+            return res.status(200).json({ message: "Data ditemukan, tetapi tidak ada absensi untuk tanggal tersebut", data: [] });
+        }
+
+        res.status(200).json({ message: "Data karyawan dan absensi berhasil diambil", data: results });
+    });
+};
