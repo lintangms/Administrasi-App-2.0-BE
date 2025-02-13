@@ -44,7 +44,7 @@ exports.createBoosting = (req, res) => {
         const id_game = results[0].id_game;
 
         // Insert data ke tabel perolehan_boosting
-        const sqlInsert = 'INSERT INTO perolehan_boosting (NIP, nominal, periode, ket, id_game) VALUES (?, ?, ?, ?, ?)';
+        const sqlInsert = 'INSERT INTO perolehan_boosting (NIP, nominal, ket, id_game) VALUES (?, ?, ?, ?, ?)';
         db.query(sqlInsert, [NIP, nominal, periode, ket, id_game], (err, insertResults) => {
             if (err) return res.status(500).json({ message: 'Error pada server', error: err });
 

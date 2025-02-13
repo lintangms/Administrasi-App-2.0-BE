@@ -9,6 +9,18 @@ exports.getAllGames = (req, res) => {
     });
 };
 
+exports.getAllGamesName = (req, res) => {
+    const sql = 'SELECT nama_game FROM game'; // Hanya mengambil nama_game
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+
+        // Ambil hanya nama_game dalam array
+        const gameNames = results.map(game => game.nama_game);
+
+        res.status(200).json({ message: 'Data nama game berhasil diambil', data: gameNames });
+    });
+};
+
 // Get single record
 exports.getGameById = (req, res) => {
     const { id } = req.params;

@@ -43,13 +43,15 @@ exports.getStatistikFarming = (req, res) => {
         SELECT k.nip, k.nama,
                COALESCE(SUM(pf.koin), 0) AS total_farming
         FROM karyawan k
+        JOIN jabatan j ON k.id_jabatan = j.id_jabatan
         LEFT JOIN perolehan_farming pf 
             ON k.nip = pf.nip 
             AND MONTH(pf.periode) = ? 
             AND YEAR(pf.periode) = ?
         LEFT JOIN game g 
             ON pf.id_game = g.id_game
-        WHERE (? IS NULL OR g.nama_game = ?)
+        WHERE j.nama_jabatan = 'FARMER'
+            AND (? IS NULL OR g.nama_game = ?)
         GROUP BY k.nip, k.nama
         ORDER BY k.nip;
     `;
@@ -73,13 +75,15 @@ exports.getStatistikBoosting = (req, res) => {
         SELECT k.nip, k.nama,
                COALESCE(SUM(pb.nominal), 0) AS total_boosting
         FROM karyawan k
+        JOIN jabatan j ON k.id_jabatan = j.id_jabatan
         LEFT JOIN perolehan_boosting pb 
             ON k.nip = pb.nip 
             AND MONTH(pb.periode) = ? 
             AND YEAR(pb.periode) = ?
         LEFT JOIN game g 
             ON pb.id_game = g.id_game
-        WHERE (? IS NULL OR g.nama_game = ?)
+        WHERE j.nama_jabatan = 'BOOSTER'
+            AND (? IS NULL OR g.nama_game = ?)
         GROUP BY k.nip, k.nama
         ORDER BY k.nip;
     `;
