@@ -9,7 +9,7 @@ exports.getAllKasbon = (req, res) => {
     });
 };
 
-// Get single record
+// Get single record by NIP with optional date range filter
 exports.getKasbonByNip = (req, res) => {
     const { NIP } = req.params;
     const { start_date, end_date } = req.query;
@@ -30,31 +30,54 @@ exports.getKasbonByNip = (req, res) => {
     });
 };
 
-
 // Create record
 exports.createKasbon = (req, res) => {
-    const { NIP, nominal, keperluan, status, dari, ket } = req.body;
-    const sql = 'INSERT INTO kasbon (NIP, nominal, keperluan, status, dari, ket) VALUES (?, ?, ?, ?, ?, ?)';
-    db.query(sql, [NIP, nominal, keperluan, status, dari, ket], (err, results) => {
+    const { NIP, nominal, keperluan, status = 'belum_lunas', dari, ket, tanggal } = req.body;
+    
+    // Memastikan tanggal diisi
+    if (!tanggal) {
+        return res.status(400).json({ message: 'Tanggal wajib diisi' });
+    }
+
+    // Query untuk menambahkan kasbon ke database
+    const sql = 'INSERT INTO kasbon (NIP, nominal, keperluan, tanggal, status, dari, ket) VALUES (?, ?, ?, ?, ?, ?, ?)';
+    db.query(sql, [NIP, nominal, keperluan, tanggal, status, dari, ket], (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
         res.status(201).json({ 
             message: 'Kasbon berhasil ditambahkan', 
-            data: { id: results.insertId, ...req.body } 
+            data: { 
+                id_kasbon: results.insertId, 
+                NIP, 
+                nominal, 
+                keperluan, 
+                tanggal, 
+                status, 
+                dari, 
+                ket 
+            } 
         });
     });
 };
 
-// Update record
+
+// Update status kasbon
 exports.updateKasbon = (req, res) => {
     const { id } = req.params;
-    const { NIP, nominal, keperluan, status, dari, ket } = req.body;
-    const sql = 'UPDATE kasbon SET NIP = ?, nominal = ?, keperluan = ?, status = ?, dari = ?, ket = ? WHERE id_kasbon = ?';
-    db.query(sql, [NIP, nominal, keperluan, status, dari, ket, id], (err, results) => {
+    const { status } = req.body;
+    
+    // Memastikan status ada dan valid
+    if (!status || !['belum_lunas', 'lunas'].includes(status)) {
+        return res.status(400).json({ message: 'Status harus diisi dengan "belum_lunas" atau "lunas"' });
+    }
+
+    const sql = 'UPDATE kasbon SET status = ? WHERE id_kasbon = ?';
+    db.query(sql, [status, id], (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
         if (results.affectedRows === 0) return res.status(404).json({ message: 'Kasbon tidak ditemukan' });
-        res.status(200).json({ message: 'Kasbon berhasil diperbarui' });
+        res.status(200).json({ message: 'Status kasbon berhasil diperbarui' });
     });
 };
+
 
 // Delete record
 exports.deleteKasbon = (req, res) => {
@@ -67,6 +90,7 @@ exports.deleteKasbon = (req, res) => {
     });
 };
 
+// Get ENUM options for "dari" column
 exports.getKasbonOptions = (req, res) => {
     const sql = "SHOW COLUMNS FROM kasbon LIKE 'dari'"; // Mengambil informasi tentang kolom 'dari'
     

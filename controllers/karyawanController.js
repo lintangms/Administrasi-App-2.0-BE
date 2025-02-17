@@ -127,6 +127,29 @@ exports.updateKaryawan = (req, res) => {
 };
 
 
+exports.updateGambarByNIP = (req, res) => {
+    const { NIP } = req.params;
+
+    if (!req.file) {
+        return res.status(400).json({ message: 'Gambar baru wajib diupload' });
+    }
+
+    const gambar = req.file.filename;
+
+    const sql = 'UPDATE karyawan SET gambar = ? WHERE NIP = ?';
+    db.query(sql, [gambar, NIP], (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error updating gambar', error: err });
+        }
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Karyawan tidak ditemukan' });
+        }
+        res.status(200).json({ message: 'Gambar berhasil diperbarui' });
+    });
+};
+
+
+
 // Get all karyawan
 exports.getAllKaryawan = (req, res) => {
     const sql = `SELECT k.*, j.nama_jabatan, d.nama_divisi 

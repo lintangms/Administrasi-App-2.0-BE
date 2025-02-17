@@ -52,20 +52,117 @@ exports.absen = (req, res) => {
     });
 };
 
+exports.absenIzin = (req, res) => {
+    const { NIP } = req.body;
+
+    if (!NIP) {
+        return res.status(400).json({ message: "NIP wajib diisi" });
+    }
+
+    // Cek apakah NIP ada di database
+    const checkNIPQuery = `SELECT * FROM karyawan WHERE NIP = ?`;
+
+    db.query(checkNIPQuery, [NIP], (err, results) => {
+        if (err) {
+            console.error("Error saat memeriksa NIP:", err);
+            return res.status(500).json({ message: "Terjadi kesalahan pada server" });
+        }
+
+        if (results.length === 0) {
+            return res.status(400).json({ message: "NIP tidak ditemukan dalam database" });
+        }
+
+        // Ambil tanggal hari ini
+        const tanggal = new Date().toISOString().split("T")[0];
+
+        // Cek apakah sudah ada izin/tidak masuk untuk hari ini
+        const checkIzinQuery = `SELECT * FROM absen WHERE NIP = ? AND status = 'izin' AND tanggal = CURDATE()`;
+
+        db.query(checkIzinQuery, [NIP], (err, results) => {
+            if (err) {
+                console.error("Error saat mengecek izin terakhir:", err);
+                return res.status(500).json({ message: "Terjadi kesalahan pada server" });
+            }
+
+            // Jika sudah ada izin untuk hari ini, tetap izinkan input
+            const status = "izin";
+            const insertQuery = `INSERT INTO absen (NIP, waktu, tanggal, status, tipe) VALUES (?, NOW(), ?, ?, NULL)`;
+
+            db.query(insertQuery, [NIP, tanggal, status], (err, result) => {
+                if (err) {
+                    console.error("Error saat menyimpan izin:", err);
+                    return res.status(500).json({ message: "Terjadi kesalahan pada server" });
+                }
+
+                res.status(201).json({ message: "Izin berhasil dicatat", NIP, status });
+            });
+        });
+    });
+};
+
+exports.absenTidakMasuk = (req, res) => {
+    const { NIP } = req.body;
+
+    if (!NIP) {
+        return res.status(400).json({ message: "NIP wajib diisi" });
+    }
+
+    // Cek apakah NIP ada di database
+    const checkNIPQuery = `SELECT * FROM karyawan WHERE NIP = ?`;
+
+    db.query(checkNIPQuery, [NIP], (err, results) => {
+        if (err) {
+            console.error("Error saat memeriksa NIP:", err);
+            return res.status(500).json({ message: "Terjadi kesalahan pada server" });
+        }
+
+        if (results.length === 0) {
+            return res.status(400).json({ message: "NIP tidak ditemukan dalam database" });
+        }
+
+        // Ambil tanggal hari ini
+        const tanggal = new Date().toISOString().split("T")[0];
+
+        // Cek apakah sudah ada tidak masuk untuk hari ini
+        const checkTidakMasukQuery = `SELECT * FROM absen WHERE NIP = ? AND status = 'tidak_masuk' AND tanggal = CURDATE()`;
+
+        db.query(checkTidakMasukQuery, [NIP], (err, results) => {
+            if (err) {
+                console.error("Error saat mengecek tidak masuk terakhir:", err);
+                return res.status(500).json({ message: "Terjadi kesalahan pada server" });
+            }
+
+            // Jika sudah ada tidak masuk untuk hari ini, tetap izinkan input
+            const status = "tidak_masuk";
+            const insertQuery = `INSERT INTO absen (NIP, waktu, tanggal, status, tipe) VALUES (?, NOW(), ?, ?, NULL)`;
+
+            db.query(insertQuery, [NIP, tanggal, status], (err, result) => {
+                if (err) {
+                    console.error("Error saat menyimpan tidak masuk:", err);
+                    return res.status(500).json({ message: "Terjadi kesalahan pada server" });
+                }
+
+                res.status(201).json({ message: "Tidak Masuk berhasil dicatat", NIP, status });
+            });
+        });
+    });
+};
+
+
 // **2. Rekap absen berdasarkan NIP dan rentang tanggal**
 exports.getAbsenRekapByNIP = (req, res) => {
     const { NIP } = req.params;
     
-    // Tentukan rentang tanggal
-    const startDate = '2025-01-01'; // Bisa diganti sesuai kebutuhan
-    const endDate = '2025-02-28';   // Perbaikan dari 31 Februari ke 28 Februari
+    // Tentukan rentang tanggal (dapat disesuaikan)
+    const startDate = '2025-01-01';
+    const endDate = '2025-02-28';  
 
     const sql = `
         SELECT 
             NIP,
-            COUNT(CASE WHEN status = 'hadir' AND tipe = 'masuk' THEN 1 END) AS total_hadir,
-            COUNT(CASE WHEN status = 'izin' AND tipe = 'masuk' THEN 1 END) AS total_izin,
-            COUNT(CASE WHEN status = 'tidak_masuk' AND tipe = 'masuk' THEN 1 END) AS total_tidak_masuk
+            COUNT(CASE WHEN status = 'hadir' THEN 1 END) AS total_hadir,
+            COUNT(CASE WHEN status = 'izin' THEN 1 END) AS total_izin,
+            COUNT(CASE WHEN status = 'tidak_masuk' THEN 1 END) AS total_tidak_masuk
         FROM absen
         WHERE NIP = ? AND tanggal BETWEEN ? AND ?
         GROUP BY NIP
@@ -92,6 +189,7 @@ exports.getAbsenRekapByNIP = (req, res) => {
         });
     });
 };
+
 
 exports.getStatusByNIP = (req, res) => {
     const { NIP } = req.params;
@@ -177,10 +275,15 @@ exports.getAllAbsensi = (req, res) => {
             k.nama,
             COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN a.tanggal END), NULL) AS tanggal_masuk,
             COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_masuk,
-            COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN a.tanggal END), NULL) AS tanggal_pulang,
-            COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_pulang
+            COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_pulang,
+            COALESCE(MAX(CASE 
+                WHEN a.status = 'hadir' THEN 'masuk'
+                WHEN a.status = 'izin' THEN 'izin'
+                WHEN a.status = 'tidak_masuk' THEN 'tidak_masuk'
+                ELSE NULL
+            END), NULL) AS status
         FROM karyawan k
-        LEFT JOIN absen a ON k.NIP = a.NIP
+        LEFT JOIN absen a ON k.NIP = a.NIP AND a.tanggal = ?
         WHERE 1=1
     `;
 

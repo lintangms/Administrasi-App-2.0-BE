@@ -38,6 +38,7 @@ router.get('/get', karyawanController.getAllKaryawan);
 router.get('/NIP/:nip', karyawanController.getKaryawanByNIP);
 router.get('/karyawan/:id', karyawanController.getKaryawanById)
 router.put('/update/:id_karyawan', karyawanController.updateKaryawan);
+router.put('/gambar/:NIP',upload.single('gambar'), karyawanController.updateGambarByNIP);
 router.delete('/delete/:id', karyawanController.deleteKaryawan);
 router.put('/password/:nip', karyawanController.updatePassword);
 
