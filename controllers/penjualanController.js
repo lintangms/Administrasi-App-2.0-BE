@@ -13,13 +13,13 @@ exports.createPenjualan = (req, res) => {
 
         const statusKaryawan = result[0].status;
 
-        // Ambil jumlah koin dan saldo koin saat ini dari tabel koin
-        const sqlGetKoin = 'SELECT jumlah, dijual, saldo_koin FROM koin WHERE id_koin = ? AND NIP = ?';
+        // Ambil jumlah koin, saldo koin, dan id_game dari tabel koin
+        const sqlGetKoin = 'SELECT jumlah, dijual, saldo_koin, id_game FROM koin WHERE id_koin = ? AND NIP = ?';
         db.query(sqlGetKoin, [id_koin, NIP], (err, results) => {
             if (err) return res.status(500).json({ message: 'Error fetching koin data', error: err });
             if (results.length === 0) return res.status(404).json({ message: 'Koin tidak ditemukan' });
 
-            const { jumlah, dijual, saldo_koin } = results[0];
+            const { jumlah, dijual, saldo_koin, id_game } = results[0];
             const newDijual = (dijual || 0) + koin_dijual;
             const newSisa = jumlah - newDijual;
             const newSaldoKoin = saldo_koin - koin_dijual;
@@ -83,17 +83,17 @@ exports.createPenjualan = (req, res) => {
                                                 AND MONTH(g.tgl_transaksi) = MONTH(p.tgl_transaksi)
                                                 AND YEAR(g.tgl_transaksi) = YEAR(p.tgl_transaksi)
                                             SET g.gaji_kotor = ? * p.koin_dijual
-                                            WHERE MONTH(g.tgl_transaksi) = ?
+                                            WHERE MONTH(g.tgl_transaksi) = ? 
                                             AND YEAR(g.tgl_transaksi) = ?`;
 
                                         db.query(sqlUpdateAllGaji, [avgRate, currentMonth, currentYear], (err) => {
                                             if (err) return db.rollback(() => res.status(500).json({ message: 'Error updating gaji records', error: err }));
 
-                                            // Insert data baru ke tabel gaji
+                                            // Insert data baru ke tabel gaji dengan id_game
                                             const gaji_kotor = avgRate * koin_dijual;
-                                            const sqlInsertGaji = 'INSERT INTO gaji (periode, tgl_transaksi, NIP, gaji_kotor) VALUES (?, ?, ?, ?)';
+                                            const sqlInsertGaji = 'INSERT INTO gaji (periode, tgl_transaksi, NIP, id_game, gaji_kotor) VALUES (?, ?, ?, ?, ?)';
                                             
-                                            db.query(sqlInsertGaji, [tgl_transaksi, tgl_transaksi, NIP, gaji_kotor], (err) => {
+                                            db.query(sqlInsertGaji, [tgl_transaksi, tgl_transaksi, NIP, id_game, gaji_kotor], (err) => {
                                                 if (err) return db.rollback(() => res.status(500).json({ message: 'Error inserting into gaji', error: err }));
 
                                                 // Commit transaksi jika semua query berhasil
@@ -106,6 +106,7 @@ exports.createPenjualan = (req, res) => {
                                                             id_penjualan,
                                                             NIP,
                                                             id_koin,
+                                                            id_game,
                                                             server,
                                                             demand,
                                                             rate,
@@ -132,6 +133,7 @@ exports.createPenjualan = (req, res) => {
                                                     id_penjualan,
                                                     NIP,
                                                     id_koin,
+                                                    id_game,
                                                     server,
                                                     demand,
                                                     rate,
@@ -156,29 +158,61 @@ exports.createPenjualan = (req, res) => {
 };
 
 
-exports.getAllPenjualan = (req, res) => {
-    const { bulan, tahun } = req.query;
 
+exports.getAllPenjualan = (req, res) => {
+    const { bulan, tahun, nama_game } = req.query;
+
+    // Query untuk mendapatkan id_game berdasarkan nama_game
+    const sqlGetIdGame = `SELECT id_game FROM game WHERE nama_game = ?`;
+
+    if (nama_game) {
+        db.query(sqlGetIdGame, [nama_game], (err, gameResults) => {
+            if (err) return res.status(500).json({ message: 'Error fetching game ID', error: err });
+
+            if (gameResults.length === 0) {
+                return res.status(404).json({ message: `Game dengan nama "${nama_game}" tidak ditemukan` });
+            }
+
+            const id_game = gameResults[0].id_game;
+            fetchPenjualan(res, bulan, tahun, id_game);
+        });
+    } else {
+        fetchPenjualan(res, bulan, tahun, null);
+    }
+};
+
+function fetchPenjualan(res, bulan, tahun, id_game) {
     let sqlGetPenjualan = `
         SELECT 
             p.*, 
-            k.dijual 
+            k.dijual,
+            g.nama_game,
+            karyawan.nama
         FROM penjualan p
         LEFT JOIN koin k ON p.id_koin = k.id_koin
+        LEFT JOIN perolehan_farming pf ON k.NIP = pf.NIP
+        LEFT JOIN game g ON pf.id_game = g.id_game
+        LEFT JOIN karyawan ON pf.NIP = karyawan.NIP
     `;
-    
-    let params = [];
 
-    // Tambahkan filtering jika bulan dan/atau tahun diberikan
-    if (bulan && tahun) {
-        sqlGetPenjualan += ' WHERE MONTH(p.tgl_transaksi) = ? AND YEAR(p.tgl_transaksi) = ?';
-        params = [bulan, tahun];
-    } else if (bulan) {
-        sqlGetPenjualan += ' WHERE MONTH(p.tgl_transaksi) = ?';
-        params = [bulan];
-    } else if (tahun) {
-        sqlGetPenjualan += ' WHERE YEAR(p.tgl_transaksi) = ?';
-        params = [tahun];
+    let params = [];
+    let conditions = [];
+
+    if (bulan) {
+        conditions.push('MONTH(p.tgl_transaksi) = ?');
+        params.push(bulan);
+    }
+    if (tahun) {
+        conditions.push('YEAR(p.tgl_transaksi) = ?');
+        params.push(tahun);
+    }
+    if (id_game) {
+        conditions.push('g.id_game = ?');
+        params.push(id_game);
+    }
+
+    if (conditions.length > 0) {
+        sqlGetPenjualan += ' WHERE ' + conditions.join(' AND ');
     }
 
     db.query(sqlGetPenjualan, params, (err, results) => {
@@ -189,7 +223,8 @@ exports.getAllPenjualan = (req, res) => {
             data: results
         });
     });
-};
+}
+
 
 exports.getAverageRate = (req, res) => {
     const { bulan, tahun } = req.query;
@@ -212,6 +247,34 @@ exports.getAverageRate = (req, res) => {
         res.status(200).json({
             message: 'Rata-rata rate berhasil diambil',
             rata_rata_rate: results[0].rata_rata_rate
+        });
+    });
+};
+
+exports.getTotalUang = (req, res) => {
+    const { bulan, tahun } = req.query;
+
+    if (!bulan || !tahun) {
+        return res.status(400).json({ message: 'Bulan dan tahun harus diberikan' });
+    }
+
+    const sqlGetTotal = `
+        SELECT 
+            COALESCE(SUM(koin_dijual), 0) AS total_koin_dijual,
+            COALESCE(SUM(jumlah_uang), 0) AS total_jumlah_uang
+        FROM penjualan
+        WHERE MONTH(tgl_transaksi) = ? AND YEAR(tgl_transaksi) = ?
+    `;
+
+    db.query(sqlGetTotal, [bulan, tahun], (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error fetching total koin dan uang', error: err });
+        }
+
+        res.status(200).json({
+            message: 'Total koin dijual dan jumlah uang berhasil diambil',
+            total_koin_dijual: results[0].total_koin_dijual,
+            total_jumlah_uang: results[0].total_jumlah_uang
         });
     });
 };

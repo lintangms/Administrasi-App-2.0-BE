@@ -21,6 +21,7 @@ const statistikRoutes = require("./routes/statistikRoutes");
 const tugasRoutes = require("./routes/tugasRoutes");
 const PenjualanRoutes = require("./routes/penjualanRoutes");
 const gajiRoutes = require("./routes/gajiRoutes");
+const unsoldRoutes = require("./routes/unsoldRoutes");
 
 // Konfigurasi environment variable
 dotenv.config();
@@ -61,6 +62,7 @@ app.use("/api/statistik", statistikRoutes);
 app.use("/api/tugas", tugasRoutes);
 app.use("/api/penjualan", PenjualanRoutes);
 app.use("/api/gaji", gajiRoutes);
+app.use("/api/unsold", unsoldRoutes);
 
 // Jalankan server
 app.listen(PORT, () => {

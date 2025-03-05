@@ -8,5 +8,7 @@ router.post('/add', farmingController.createFarming);
 router.put('/update/:id', farmingController.updateFarming);
 router.delete('/delete/:id', farmingController.deleteFarming);
 router.get('/totalkoin/:NIP', farmingController.getTotalKoin);
+router.get('/getall', farmingController.getAllTotalKoin);
+router.get('/getall/:NIP', farmingController.getTotalKoinByNIP);
 
 module.exports = router;

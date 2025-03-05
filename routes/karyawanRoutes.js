@@ -41,5 +41,6 @@ router.put('/update/:id_karyawan', karyawanController.updateKaryawan);
 router.put('/gambar/:NIP',upload.single('gambar'), karyawanController.updateGambarByNIP);
 router.delete('/delete/:id', karyawanController.deleteKaryawan);
 router.put('/password/:nip', karyawanController.updatePassword);
+router.get('/getbaru', karyawanController.getAllKaryawanBaru);
 
 module.exports = router;
