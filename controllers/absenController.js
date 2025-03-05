@@ -12,45 +12,21 @@ exports.absen = (req, res) => {
     }
 
     const tanggal = new Date().toISOString().split('T')[0];
+    const status = 'hadir';
 
-    // Cek tipe terakhir berdasarkan NIP
-    const checkLastAbsenQuery = `SELECT tipe FROM absen WHERE NIP = ? ORDER BY waktu DESC LIMIT 1`;
+    // Insert absen tanpa pengecekan sebelumnya
+    const insertQuery = `INSERT INTO absen (NIP, waktu, tanggal, status, tipe) VALUES (?, NOW(), ?, ?, ?)`;
 
-    db.query(checkLastAbsenQuery, [NIP], (err, results) => {
+    db.query(insertQuery, [NIP, tanggal, status, tipe], (err, result) => {
         if (err) {
-            console.error("Error saat mengecek tipe terakhir:", err);
+            console.error("Error saat menyimpan absen:", err);
             return res.status(500).json({ message: "Terjadi kesalahan pada server" });
         }
 
-        // Jika ada data absen terakhir
-        if (results.length > 0) {
-            const lastTipe = results[0].tipe;
-
-            // Jika tipe terakhir adalah 'masuk' dan user mencoba absen 'masuk' lagi, tolak
-            if (lastTipe === 'masuk' && tipe === 'masuk') {
-                return res.status(400).json({ message: "Anda sudah melakukan absen masuk, silakan lakukan absen pulang terlebih dahulu." });
-            }
-
-            // Jika tipe terakhir adalah 'pulang' dan user mencoba absen 'pulang' lagi, tolak
-            if (lastTipe === 'pulang' && tipe === 'pulang') {
-                return res.status(400).json({ message: "Anda sudah melakukan absen pulang, silakan lakukan absen masuk terlebih dahulu." });
-            }
-        }
-
-        // Jika valid, lakukan insert absen
-        const status = 'hadir';
-        const insertQuery = `INSERT INTO absen (NIP, waktu, tanggal, status, tipe) VALUES (?, NOW(), ?, ?, ?)`;
-
-        db.query(insertQuery, [NIP, tanggal, status, tipe], (err, result) => {
-            if (err) {
-                console.error("Error saat menyimpan absen:", err);
-                return res.status(500).json({ message: "Terjadi kesalahan pada server" });
-            }
-
-            res.status(201).json({ message: "Absen berhasil dicatat", NIP, tipe, status });
-        });
+        res.status(201).json({ message: "Absen berhasil dicatat", NIP, tipe, status });
     });
 };
+
 
 exports.absenIzin = (req, res) => {
     const { NIP } = req.body;
