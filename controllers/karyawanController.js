@@ -81,7 +81,7 @@ exports.createKaryawan = (req, res) => {
 exports.updateKaryawan = (req, res) => {
     const { id_karyawan } = req.params;
     const {
-        NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
+        NIP, nama, alamat, telp, pendidikan, status,
         nama_jabatan, nama_divisi, username, password, ket,
         username_akun, nama_game, nama_shift
     } = req.body;
@@ -108,14 +108,14 @@ exports.updateKaryawan = (req, res) => {
     ]).then(([id_jabatan, id_divisi, id_akun, id_game, id_shift]) => {
         const sql = `UPDATE karyawan SET 
                         NIP = COALESCE(?, NIP), nama = COALESCE(?, nama), alamat = COALESCE(?, alamat), 
-                        telp = COALESCE(?, telp), ttl = COALESCE(?, ttl), pendidikan = COALESCE(?, pendidikan), 
-                        status = COALESCE(?, status), mulai_bekerja = COALESCE(?, mulai_bekerja),
+                        telp = COALESCE(?, telp), pendidikan = COALESCE(?, pendidikan), 
+                        status = COALESCE(?, status), 
                         id_jabatan = COALESCE(?, id_jabatan), id_divisi = COALESCE(?, id_divisi), 
                         username = COALESCE(?, username), password = COALESCE(?, password),
                         ket = COALESCE(?, ket), gambar = COALESCE(?, gambar),
                         id_akun = COALESCE(?, id_akun), id_game = COALESCE(?, id_game), id_shift = COALESCE(?, id_shift)
                      WHERE id_karyawan = ?`;
-        db.query(sql, [NIP, nama, alamat, telp, ttl, pendidikan, status, mulai_bekerja,
+        db.query(sql, [NIP, nama, alamat, telp, pendidikan, status,
             id_jabatan, id_divisi, username, hashedPassword, ket, gambar,
             id_akun, id_game, id_shift, id_karyawan],
             (err, result) => {
@@ -125,6 +125,7 @@ exports.updateKaryawan = (req, res) => {
             });
     }).catch(err => res.status(500).json({ message: 'Database error', error: err }));
 };
+
 
 
 exports.updateGambarByNIP = (req, res) => {
