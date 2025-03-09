@@ -53,7 +53,8 @@ exports.getFarmingByNip = (req, res) => {
 
 // Create record
 exports.createFarming = (req, res) => {
-    const { NIP, koin, periode, ket, nama_game } = req.body;
+    const { NIP, koin, ket, nama_game } = req.body;
+    const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
 
     // Cari id_game berdasarkan nama_game
     const sqlGetGame = 'SELECT id_game FROM game WHERE nama_game = ?';
@@ -68,7 +69,7 @@ exports.createFarming = (req, res) => {
         db.query(sqlInsert, [NIP, koin, ket, id_game], (err, insertResults) => {
             if (err) return res.status(500).json({ message: 'Error pada server', error: err });
 
-            // Hitung total jumlah koin yang pernah diperoleh berdasarkan NIP dan id_game
+            // Hitung total koin yang pernah diperoleh berdasarkan NIP dan id_game
             const sqlSumKoin = 'SELECT SUM(koin) AS total_koin FROM perolehan_farming WHERE NIP = ? AND id_game = ?';
             db.query(sqlSumKoin, [NIP, id_game], (err, sumResults) => {
                 if (err) return res.status(500).json({ message: 'Gagal menghitung total koin', error: err });
@@ -83,28 +84,90 @@ exports.createFarming = (req, res) => {
                     const totalDijual = dijualResults[0].total_dijual || 0;
                     const saldoKoinBaru = totalKoin - totalDijual;
 
-                    // Update saldo_koin di tabel koin dengan menyertakan id_game
+                    // Update saldo_koin di tabel koin
                     const sqlUpdateSaldoKoin = `
-                        INSERT INTO koin (NIP, id_game, jumlah, saldo_koin)
-                        VALUES (?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE jumlah = VALUES(jumlah), saldo_koin = VALUES(saldo_koin);
+                        INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE jumlah = VALUES(jumlah), saldo_koin = VALUES(saldo_koin), tanggal = VALUES(tanggal);
                     `;
 
-                    db.query(sqlUpdateSaldoKoin, [NIP, id_game, totalKoin, saldoKoinBaru], (err) => {
+                    db.query(sqlUpdateSaldoKoin, [NIP, id_game, totalKoin, saldoKoinBaru, currentDate], (err, updateResults) => {
                         if (err) return res.status(500).json({ message: 'Gagal update saldo koin', error: err });
 
-                        res.status(201).json({
-                            message: 'Data farming berhasil ditambahkan dan saldo koin diperbarui',
-                            data: { 
-                                id_farming: insertResults.insertId, 
-                                NIP, 
-                                totalKoin, 
-                                saldo_koin: saldoKoinBaru, 
-                                periode, 
-                                ket, 
-                                id_game, 
-                                nama_game 
-                            }
+                        // Ambil id_koin terbaru setelah update
+                        const sqlGetIdKoin = 'SELECT id_koin FROM koin WHERE NIP = ? AND id_game = ? ORDER BY tanggal DESC LIMIT 1';
+                        db.query(sqlGetIdKoin, [NIP, id_game], (err, koinResults) => {
+                            if (err) return res.status(500).json({ message: 'Gagal mengambil id_koin', error: err });
+
+                            if (koinResults.length === 0) return res.status(500).json({ message: 'id_koin tidak ditemukan' });
+
+                            const id_koin = koinResults[0].id_koin;
+
+                            console.log(`ID KOIN TERBARU: ${id_koin} untuk NIP: ${NIP}`);
+
+                            // Update id_koin di tabel target
+                            const sqlUpdateTarget = `
+                                UPDATE target 
+                                SET id_koin = ? 
+                                WHERE NIP = ? 
+                                AND id_target = (SELECT id_target FROM (SELECT id_target FROM target WHERE NIP = ? ORDER BY tanggal DESC LIMIT 1) AS subquery)
+                                LIMIT 1;
+                            `;
+
+                            db.query(sqlUpdateTarget, [id_koin, NIP, NIP], (err, updateTargetResults) => {
+                                if (err) {
+                                    console.error('Gagal update id_koin di tabel target:', err);
+                                    return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
+                                }
+
+                                console.log(`UPDATE TARGET: ${updateTargetResults.affectedRows} baris diubah untuk NIP: ${NIP}`);
+
+                                // Ambil target terbaru untuk menghitung persentase
+                                const sqlGetTarget = 'SELECT target FROM target WHERE NIP = ? ORDER BY tanggal DESC LIMIT 1';
+                                db.query(sqlGetTarget, [NIP], (err, targetResults) => {
+                                    if (err) return res.status(500).json({ message: 'Gagal mengambil target', error: err });
+
+                                    if (targetResults.length === 0) return res.status(500).json({ message: 'Target tidak ditemukan' });
+
+                                    const target = targetResults[0].target;
+                                    const persentase = target > 0 ? (saldoKoinBaru / target) * 100 : 0;
+
+                                    // Update persentase di tabel target
+                                    const sqlUpdatePersentase = `
+                                        UPDATE target 
+                                        SET persentase = ? 
+                                        WHERE NIP = ? 
+                                        AND id_target = (SELECT id_target FROM (SELECT id_target FROM target WHERE NIP = ? ORDER BY tanggal DESC LIMIT 1) AS subquery)
+                                        LIMIT 1;
+                                    `;
+
+                                    db.query(sqlUpdatePersentase, [persentase, NIP, NIP], (err, updatePersentaseResults) => {
+                                        if (err) {
+                                            console.error('Gagal update persentase di tabel target:', err);
+                                            return res.status(500).json({ message: 'Gagal mengupdate persentase di tabel target', error: err });
+                                        }
+
+                                        console.log(`UPDATE PERSENTASE: ${updatePersentaseResults.affectedRows} baris diubah untuk NIP: ${NIP}`);
+
+                                        res.status(201).json({
+                                            message: 'Data farming berhasil ditambahkan, saldo koin diperbarui, koin dan persentase diperbarui di target',
+                                            data: { 
+                                                id_farming: insertResults.insertId, 
+                                                NIP, 
+                                                totalKoin, 
+                                                saldo_koin: saldoKoinBaru, 
+                                                ket, 
+                                                id_game, 
+                                                nama_game, 
+                                                tanggal: currentDate,
+                                                id_koin,
+                                                target,
+                                                persentase
+                                            }
+                                        });
+                                    });
+                                });
+                            });
                         });
                     });
                 });
@@ -112,8 +175,6 @@ exports.createFarming = (req, res) => {
         });
     });
 };
-
-
 
 
 // Update record
@@ -272,9 +333,9 @@ exports.getTotalKoinByNIP = (req, res) => {
 
     const sql = `
         SELECT k.NIP, ky.nama, 
-               SUM(k.saldo_koin) AS total_saldo_koin, 
-               SUM(k.jumlah) AS total_koin, 
-               SUM(IFNULL(k.dijual, 0)) AS total_dijual
+               (SELECT saldo_koin FROM koin WHERE NIP = k.NIP ORDER BY tanggal DESC LIMIT 1) AS total_saldo_koin,
+               (SELECT dijual FROM koin WHERE NIP = k.NIP ORDER BY tanggal DESC LIMIT 1) AS total_dijual,
+               SUM(k.jumlah) AS total_koin
         FROM koin k
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
         WHERE k.NIP = ? 
@@ -296,7 +357,13 @@ exports.getTotalKoinByNIP = (req, res) => {
 
         res.status(200).json({
             message: `Data total koin untuk NIP ${NIP} pada periode ${bulan}-${tahun} berhasil diambil`,
-            data: results[0] // Ambil hasilnya langsung karena hanya ada satu data per NIP
+            data: {
+                NIP: results[0].NIP,
+                nama: results[0].nama,
+                total_saldo_koin: results[0].total_saldo_koin || 0,
+                total_dijual: results[0].total_dijual || 0,
+                total_koin: results[0].total_koin || 0
+            }
         });
     });
 };

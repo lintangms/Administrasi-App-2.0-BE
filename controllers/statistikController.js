@@ -1,18 +1,54 @@
 const db = require('../config/db');
 
 exports.getStatistik = (req, res) => {
-    const sqlKaryawan = "SELECT COUNT(id_karyawan) AS jumlah_karyawan FROM karyawan";
-    const sqlFarming = "SELECT SUM(koin) AS total_farming FROM perolehan_farming";
-    const sqlBoosting = "SELECT SUM(nominal) AS total_boosting FROM perolehan_boosting";
-    const sqlInventaris = "SELECT COUNT(id_inventaris) AS jumlah_inventaris FROM inventaris";
+    const { nama_game, bulan, tahun, shift } = req.query;
 
-    db.query(sqlKaryawan, (err, resultKaryawan) => {
+    const bulanFilter = bulan || new Date().getMonth() + 1;
+    const tahunFilter = tahun || new Date().getFullYear();
+
+    const sqlKaryawan = `
+        SELECT COUNT(k.id_karyawan) AS jumlah_karyawan 
+        FROM karyawan k
+        JOIN shift s ON k.id_shift = s.id_shift
+        WHERE (? IS NULL OR s.nama_shift = ?);
+    `;
+
+    const sqlFarming = `
+        SELECT SUM(pf.koin) AS total_farming
+        FROM perolehan_farming pf
+        JOIN game g ON pf.id_game = g.id_game
+        JOIN karyawan k ON pf.NIP = k.NIP
+        JOIN shift s ON k.id_shift = s.id_shift
+        WHERE (? IS NULL OR g.nama_game = ?)
+        AND MONTH(pf.periode) = ?
+        AND YEAR(pf.periode) = ?
+        AND (? IS NULL OR s.nama_shift = ?);
+    `;
+
+    const sqlBoosting = `
+        SELECT SUM(pb.nominal) AS total_boosting
+        FROM perolehan_boosting pb
+        JOIN game g ON pb.id_game = g.id_game
+        JOIN karyawan k ON pb.NIP = k.NIP
+        JOIN shift s ON k.id_shift = s.id_shift
+        WHERE (? IS NULL OR g.nama_game = ?)
+        AND MONTH(pb.periode) = ?
+        AND YEAR(pb.periode) = ?
+        AND (? IS NULL OR s.nama_shift = ?);
+    `;
+
+    const sqlInventaris = `
+        SELECT COUNT(i.id_inventaris) AS jumlah_inventaris
+        FROM inventaris i;
+    `;
+
+    db.query(sqlKaryawan, [shift, shift], (err, resultKaryawan) => {
         if (err) return res.status(500).json({ message: "Error fetching karyawan data", error: err });
 
-        db.query(sqlFarming, (err, resultFarming) => {
+        db.query(sqlFarming, [nama_game, nama_game, bulanFilter, tahunFilter, shift, shift], (err, resultFarming) => {
             if (err) return res.status(500).json({ message: "Error fetching farming data", error: err });
 
-            db.query(sqlBoosting, (err, resultBoosting) => {
+            db.query(sqlBoosting, [nama_game, nama_game, bulanFilter, tahunFilter, shift, shift], (err, resultBoosting) => {
                 if (err) return res.status(500).json({ message: "Error fetching boosting data", error: err });
 
                 db.query(sqlInventaris, (err, resultInventaris) => {
@@ -30,52 +66,53 @@ exports.getStatistik = (req, res) => {
     });
 };
 
-
-// Statistik Perolehan Farming per NIP dengan filter bulan, tahun, dan nama_game
+// Statistik Perolehan Farming per NIP dengan filter bulan, tahun, nama_game, dan shift
 exports.getStatistikFarming = (req, res) => {
-    const { bulan, tahun, nama_game } = req.query;
+    const { bulan, tahun, nama_game, shift } = req.query;
 
-    // Jika bulan & tahun tidak diisi, pakai bulan & tahun sekarang
-    const bulanFilter = bulan || new Date().getMonth() + 1; // Bulan sekarang (1-12)
-    const tahunFilter = tahun || new Date().getFullYear(); // Tahun sekarang (YYYY)
+    const bulanFilter = bulan || new Date().getMonth() + 1;
+    const tahunFilter = tahun || new Date().getFullYear();
 
     const sql = `
-        SELECT k.nip, k.nama,
-               COALESCE(SUM(pf.koin), 0) AS total_farming
+        SELECT k.nip, k.nama, 
+               COALESCE(SUM(ko.saldo_koin), 0) AS total_saldo_koin,
+               COALESCE(SUM(ko.dijual), 0) AS total_dijual
         FROM karyawan k
         JOIN jabatan j ON k.id_jabatan = j.id_jabatan
-        LEFT JOIN perolehan_farming pf 
-            ON k.nip = pf.nip 
-            AND MONTH(pf.periode) = ? 
-            AND YEAR(pf.periode) = ?
+        JOIN shift s ON k.id_shift = s.id_shift
+        LEFT JOIN koin ko 
+            ON k.nip = ko.nip 
+            AND MONTH(ko.tanggal) = ? 
+            AND YEAR(ko.tanggal) = ?
         LEFT JOIN game g 
-            ON pf.id_game = g.id_game
+            ON ko.id_game = g.id_game
         WHERE j.nama_jabatan = 'FARMER'
             AND (? IS NULL OR g.nama_game = ?)
+            AND (? IS NULL OR s.nama_shift = ?)
         GROUP BY k.nip, k.nama
         ORDER BY k.nip;
     `;
 
-    db.query(sql, [bulanFilter, tahunFilter, nama_game, nama_game], (err, results) => {
+    db.query(sql, [bulanFilter, tahunFilter, nama_game, nama_game, shift, shift], (err, results) => {
         if (err) return res.status(500).json({ message: "Error fetching farming statistics", error: err });
 
         res.status(200).json(results);
     });
 };
 
-// Statistik Perolehan Boosting per NIP dengan filter bulan, tahun, dan nama_game
-exports.getStatistikBoosting = (req, res) => {
-    const { bulan, tahun, nama_game } = req.query;
 
-    // Jika bulan & tahun tidak diisi, pakai bulan & tahun sekarang
-    const bulanFilter = bulan || new Date().getMonth() + 1; // Bulan sekarang (1-12)
-    const tahunFilter = tahun || new Date().getFullYear(); // Tahun sekarang (YYYY)
+// Statistik Perolehan Boosting per NIP dengan filter bulan, tahun, nama_game, dan shift
+exports.getStatistikBoosting = (req, res) => {
+    const { bulan, tahun, nama_game, shift } = req.query;
+
+    const bulanFilter = bulan || new Date().getMonth() + 1;
+    const tahunFilter = tahun || new Date().getFullYear();
 
     const sql = `
-        SELECT k.nip, k.nama,
-               COALESCE(SUM(pb.nominal), 0) AS total_boosting
+        SELECT k.nip, k.nama, COALESCE(SUM(pb.nominal), 0) AS total_boosting
         FROM karyawan k
         JOIN jabatan j ON k.id_jabatan = j.id_jabatan
+        JOIN shift s ON k.id_shift = s.id_shift
         LEFT JOIN perolehan_boosting pb 
             ON k.nip = pb.nip 
             AND MONTH(pb.periode) = ? 
@@ -84,22 +121,22 @@ exports.getStatistikBoosting = (req, res) => {
             ON pb.id_game = g.id_game
         WHERE j.nama_jabatan = 'BOOSTER'
             AND (? IS NULL OR g.nama_game = ?)
+            AND (? IS NULL OR s.nama_shift = ?)
         GROUP BY k.nip, k.nama
         ORDER BY k.nip;
     `;
 
-    db.query(sql, [bulanFilter, tahunFilter, nama_game, nama_game], (err, results) => {
+    db.query(sql, [bulanFilter, tahunFilter, nama_game, nama_game, shift, shift], (err, results) => {
         if (err) return res.status(500).json({ message: "Error fetching boosting statistics", error: err });
 
         res.status(200).json(results);
     });
 };
 
-// Statistik Perolehan Farming per Tahun
+// Statistik Perolehan Farming per Tahun dengan filter shift
 exports.getStatistikFarmingPerTahun = (req, res) => {
-    const { tahun, nama_game } = req.query;
+    const { tahun, nama_game, shift } = req.query;
 
-    // Jika tahun tidak diisi, pakai tahun sekarang
     const tahunFilter = tahun || new Date().getFullYear();
 
     const sql = `
@@ -114,24 +151,25 @@ exports.getStatistikFarmingPerTahun = (req, res) => {
             AND YEAR(pf.periode) = ?
         LEFT JOIN game g 
             ON pf.id_game = g.id_game
+        LEFT JOIN karyawan k ON pf.nip = k.nip
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
         WHERE (? IS NULL OR g.nama_game = ?)
+            AND (? IS NULL OR s.nama_shift = ?)
         GROUP BY m.bulan
         ORDER BY m.bulan;
     `;
 
-    db.query(sql, [tahunFilter, nama_game, nama_game], (err, results) => {
+    db.query(sql, [tahunFilter, nama_game, nama_game, shift, shift], (err, results) => {
         if (err) return res.status(500).json({ message: "Error fetching farming statistics", error: err });
 
         res.status(200).json(results);
     });
 };
 
-
-// Statistik Perolehan Boosting per Tahun
+// Statistik Perolehan Boosting per Tahun dengan filter shift
 exports.getStatistikBoostingPerTahun = (req, res) => {
-    const { tahun, nama_game } = req.query;
+    const { tahun, nama_game, shift } = req.query;
 
-    // Jika tahun tidak diisi, pakai tahun sekarang
     const tahunFilter = tahun || new Date().getFullYear();
 
     const sql = `
@@ -146,12 +184,15 @@ exports.getStatistikBoostingPerTahun = (req, res) => {
             AND YEAR(pb.periode) = ?
         LEFT JOIN game g 
             ON pb.id_game = g.id_game
+        LEFT JOIN karyawan k ON pb.nip = k.nip
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
         WHERE (? IS NULL OR g.nama_game = ?)
+            AND (? IS NULL OR s.nama_shift = ?)
         GROUP BY m.bulan
         ORDER BY m.bulan;
     `;
 
-    db.query(sql, [tahunFilter, nama_game, nama_game], (err, results) => {
+    db.query(sql, [tahunFilter, nama_game, nama_game, shift, shift], (err, results) => {
         if (err) return res.status(500).json({ message: "Error fetching boosting statistics", error: err });
 
         res.status(200).json(results);
