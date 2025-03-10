@@ -1,11 +1,15 @@
 const db = require('../config/db');
-// Get all target records without filtering
+// Get all target records with optional filtering by shift and include karyawan name
 exports.getAllTargets = (req, res) => {
-    const sql = `
-        SELECT t.id_target, t.nip, t.target, t.tanggal, t.id_game, game.nama_game,
-            COALESCE(k.saldo_koin, 0) AS saldo_koin,
-            COALESCE(g.gaji_kotor, 0) AS gaji_kotor,
-            ROUND(COALESCE((k.saldo_koin / t.target) * 100, 0), 2) AS persentase
+    const { nama_shift } = req.query; // Ambil parameter nama_shift dari query
+
+    let sql = `
+        SELECT t.id_target, t.nip, kar.nama AS nama_karyawan, t.target, t.tanggal, 
+               t.id_game, game.nama_game,
+               COALESCE(k.saldo_koin, 0) AS saldo_koin,
+               COALESCE(g.gaji_kotor, 0) AS gaji_kotor,
+               ROUND(COALESCE((k.saldo_koin / t.target) * 100, 0), 2) AS persentase,
+               s.nama_shift
         FROM target t
         LEFT JOIN koin k ON t.id_koin = k.id_koin
         LEFT JOIN (
@@ -14,17 +18,29 @@ exports.getAllTargets = (req, res) => {
             GROUP BY g1.nip
         ) g ON t.nip = g.nip
         LEFT JOIN game ON t.id_game = game.id_game
-        GROUP BY t.id_target, t.nip, t.target, t.tanggal, t.id_game, game.nama_game, k.saldo_koin, g.gaji_kotor
+        LEFT JOIN karyawan kar ON t.nip = kar.NIP
+        LEFT JOIN shift s ON kar.id_shift = s.id_shift
+    `;
+
+    const params = [];
+
+    if (nama_shift) {
+        sql += ` WHERE s.nama_shift = ? `;
+        params.push(nama_shift);
+    }
+
+    sql += `
+        GROUP BY t.id_target, t.nip, kar.nama, t.target, t.tanggal, t.id_game, game.nama_game, 
+                 k.saldo_koin, g.gaji_kotor, s.nama_shift
         ORDER BY t.tanggal DESC;
     `;
 
-    db.query(sql, (err, results) => {
+    db.query(sql, params, (err, results) => {
         if (err) return res.status(500).json({ message: "Error fetching targets", error: err });
 
         res.status(200).json({ message: "Data target berhasil diambil", data: results });
     });
 };
-
 
 
 

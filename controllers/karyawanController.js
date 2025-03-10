@@ -82,11 +82,10 @@ exports.updateKaryawan = (req, res) => {
     const { id_karyawan } = req.params;
     const {
         NIP, nama, alamat, telp, pendidikan, status,
-        nama_jabatan, nama_divisi, username, password, ket,
+        nama_jabatan, nama_divisi, username, ket,
         username_akun, nama_game, nama_shift
     } = req.body;
 
-    const hashedPassword = password ? md5(password) : null;
     const gambar = req.file ? req.file.filename : null;
 
     const getId = (table, column, value) => {
@@ -111,12 +110,12 @@ exports.updateKaryawan = (req, res) => {
                         telp = COALESCE(?, telp), pendidikan = COALESCE(?, pendidikan), 
                         status = COALESCE(?, status), 
                         id_jabatan = COALESCE(?, id_jabatan), id_divisi = COALESCE(?, id_divisi), 
-                        username = COALESCE(?, username), password = COALESCE(?, password),
-                        ket = COALESCE(?, ket), gambar = COALESCE(?, gambar),
+                        username = COALESCE(?, username), ket = COALESCE(?, ket), 
+                        gambar = COALESCE(?, gambar),
                         id_akun = COALESCE(?, id_akun), id_game = COALESCE(?, id_game), id_shift = COALESCE(?, id_shift)
                      WHERE id_karyawan = ?`;
         db.query(sql, [NIP, nama, alamat, telp, pendidikan, status,
-            id_jabatan, id_divisi, username, hashedPassword, ket, gambar,
+            id_jabatan, id_divisi, username, ket, gambar,
             id_akun, id_game, id_shift, id_karyawan],
             (err, result) => {
                 if (err) return res.status(500).json({ message: 'Error updating karyawan', error: err });
@@ -125,6 +124,7 @@ exports.updateKaryawan = (req, res) => {
             });
     }).catch(err => res.status(500).json({ message: 'Database error', error: err }));
 };
+
 
 
 
