@@ -1,33 +1,54 @@
 const db = require('../config/db');
 
-// Get latest records per NIP with optional date filtering
+// Get all farming records with optional date, shift, game, and name filtering
 exports.getAllFarming = (req, res) => {
-    const { periode } = req.query; // Periode dalam format YYYY-MM-DD
+    const { periode, nama_shift, nama_game, nama } = req.query; // Periode dalam format YYYY-MM-DD
 
     let sql = `
-        SELECT pf.* 
+        SELECT pf.*, k.nama, s.nama_shift, g.nama_game, a.username_steam
         FROM perolehan_farming pf
-        INNER JOIN (
-            SELECT NIP, MAX(periode) AS max_periode
-            FROM perolehan_farming
-            GROUP BY NIP
-        ) latest ON pf.NIP = latest.NIP AND pf.periode = latest.max_periode
+        LEFT JOIN karyawan k ON pf.nip = k.nip
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
+        LEFT JOIN game g ON k.id_game = g.id_game
+        LEFT JOIN akun a ON k.id_akun = a.id_akun
     `;
 
     let params = [];
+    let conditions = [];
 
     if (periode) {
-        sql += ' WHERE DATE(pf.periode) = ?'; // Ambil hanya bagian tanggal dari TIMESTAMP
+        conditions.push('DATE(pf.periode) = ?');
         params.push(periode);
+    }
+
+    if (nama_shift) {
+        conditions.push('s.nama_shift = ?');
+        params.push(nama_shift);
+    }
+
+    if (nama_game) {
+        conditions.push('g.nama_game = ?');
+        params.push(nama_game);
+    }
+
+    if (nama) {
+        conditions.push('k.nama LIKE ?');
+        params.push(`%${nama}%`);
+    }
+
+    if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
     }
 
     sql += ' ORDER BY pf.id_farming DESC';
 
     db.query(sql, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
-        res.status(200).json({ message: 'Data farming terakhir per NIP berhasil diambil', data: results });
+        res.status(200).json({ message: 'Semua data farming berhasil diambil', data: results });
     });
 };
+
+
 
 
 // Get all farming records by NIP with date filtering

@@ -151,27 +151,69 @@ exports.updateGambarByNIP = (req, res) => {
 
 
 
-// Get all karyawan
+// Get all karyawan with filtering
 exports.getAllKaryawan = (req, res) => {
-    const sql = `SELECT k.*, j.nama_jabatan, d.nama_divisi 
-                 FROM karyawan k 
-                 LEFT JOIN jabatan j ON k.id_jabatan = j.id_jabatan
-                 LEFT JOIN divisi d ON k.id_divisi = d.id_divisi`;
+    const { nama, nama_game, nama_shift, nama_jabatan, status } = req.query;
 
-    db.query(sql, (err, results) => {
+    let sql = `
+        SELECT k.*, j.nama_jabatan, d.nama_divisi, g.nama_game, s.nama_shift
+        FROM karyawan k
+        LEFT JOIN jabatan j ON k.id_jabatan = j.id_jabatan
+        LEFT JOIN divisi d ON k.id_divisi = d.id_divisi
+        LEFT JOIN game g ON k.id_game = g.id_game
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
+    `;
+
+    let conditions = [];
+    let params = [];
+
+    if (nama) {
+        conditions.push("k.nama LIKE ?");
+        params.push(`%${nama}%`);
+    }
+
+    if (nama_game) {
+        conditions.push("g.nama_game = ?");
+        params.push(nama_game);
+    }
+
+    if (nama_shift) {
+        conditions.push("s.nama_shift = ?");
+        params.push(nama_shift);
+    }
+
+    if (nama_jabatan) {
+        conditions.push("j.nama_jabatan = ?");
+        params.push(nama_jabatan);
+    }
+
+    if (status) {
+        conditions.push("k.status = ?");
+        params.push(status);
+    }
+
+    if (conditions.length > 0) {
+        sql += " WHERE " + conditions.join(" AND ");
+    }
+
+    sql += " ORDER BY k.id_karyawan DESC";
+
+    db.query(sql, params, (err, results) => {
         if (err) {
             console.error(err);
-            res.status(500).json({ message: 'Error fetching karyawan', error: err });
-        } else {
-            // Tambahkan URL lengkap untuk gambar
-            const dataWithPhoto = results.map((karyawan) => ({
-                ...karyawan,
-                gambar: karyawan.gambar ? `${req.protocol}://${req.get('host')}/uploads/${karyawan.gambar}` : null,
-            }));
-            res.status(200).json(dataWithPhoto);
+            return res.status(500).json({ message: "Error fetching karyawan", error: err });
         }
+
+        // Tambahkan URL lengkap untuk gambar
+        const dataWithPhoto = results.map((karyawan) => ({
+            ...karyawan,
+            gambar: karyawan.gambar ? `${req.protocol}://${req.get("host")}/uploads/${karyawan.gambar}` : null,
+        }));
+
+        res.status(200).json({ message: "Data karyawan berhasil diambil", data: dataWithPhoto });
     });
 };
+
 
 // Get all karyawan dengan status "BARU"
 exports.getAllKaryawanBaru = (req, res) => {

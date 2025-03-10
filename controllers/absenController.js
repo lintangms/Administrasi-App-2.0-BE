@@ -243,23 +243,23 @@ exports.getAbsenByNIP = (req, res) => {
 };
 
 exports.getAllAbsensi = (req, res) => {
-    const { nama, tanggal } = req.query;
+    const { nama, tanggal, nama_shift, status } = req.query;
 
     let sql = `
         SELECT 
             k.NIP, 
             k.nama,
+            s.nama_shift,
             COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN a.tanggal END), NULL) AS tanggal_masuk,
             COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_masuk,
             COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_pulang,
-            COALESCE(MAX(CASE 
-                WHEN a.status = 'hadir' THEN 'masuk'
-                WHEN a.status = 'izin' THEN 'izin'
-                WHEN a.status = 'tidak_masuk' THEN 'tidak_masuk'
-                ELSE NULL
-            END), NULL) AS status
+            (CASE 
+                WHEN MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'masuk'
+                ELSE 'belum absen'
+            END) AS status
         FROM karyawan k
         LEFT JOIN absen a ON k.NIP = a.NIP AND a.tanggal = ?
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
         WHERE 1=1
     `;
 
@@ -268,8 +268,8 @@ exports.getAllAbsensi = (req, res) => {
     // Gunakan tanggal yang dipilih, jika tidak ada gunakan tanggal hari ini
     const filterTanggal = tanggal || new Date().toISOString().split('T')[0];
 
-    // Tambahkan tanggal ke parameter query sebanyak 4 kali (karena dipakai dalam 4 kondisi)
-    params.push(filterTanggal, filterTanggal, filterTanggal, filterTanggal);
+    // Tambahkan tanggal ke parameter query sebanyak 5 kali (karena dipakai dalam 5 kondisi)
+    params.push(filterTanggal, filterTanggal, filterTanggal, filterTanggal, filterTanggal);
 
     // Filter berdasarkan nama jika diberikan
     if (nama) {
@@ -277,7 +277,21 @@ exports.getAllAbsensi = (req, res) => {
         params.push(`%${nama}%`);
     }
 
-    sql += ` GROUP BY k.NIP, k.nama ORDER BY k.nama ASC`;
+    // Filter berdasarkan shift jika diberikan
+    if (nama_shift) {
+        sql += ` AND s.nama_shift = ?`;
+        params.push(nama_shift);
+    }
+
+    sql += ` GROUP BY k.NIP, k.nama, s.nama_shift`;
+
+    // Filter berdasarkan status jika diberikan
+    if (status) {
+        sql += ` HAVING status = ?`;
+        params.push(status);
+    }
+
+    sql += ` ORDER BY k.nama ASC`;
 
     db.query(sql, params, (err, results) => {
         if (err) {
