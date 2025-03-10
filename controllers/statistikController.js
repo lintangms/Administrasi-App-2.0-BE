@@ -9,8 +9,6 @@ exports.getStatistik = (req, res) => {
     const sqlKaryawan = `
         SELECT COUNT(k.id_karyawan) AS jumlah_karyawan 
         FROM karyawan k
-        JOIN shift s ON k.id_shift = s.id_shift
-        WHERE (? IS NULL OR s.nama_shift = ?);
     `;
 
     const sqlFarming = `
