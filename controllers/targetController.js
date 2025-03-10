@@ -1,7 +1,7 @@
 const db = require('../config/db');
-// Get all target records with optional filtering by shift and include karyawan name
+// Get all target records with optional filtering by shift, month, and year, and include karyawan name
 exports.getAllTargets = (req, res) => {
-    const { nama_shift } = req.query; // Ambil parameter nama_shift dari query
+    const { nama_shift, bulan, tahun } = req.query; // Ambil parameter dari query
 
     let sql = `
         SELECT t.id_target, t.nip, kar.nama AS nama_karyawan, t.target, t.tanggal, 
@@ -23,10 +23,29 @@ exports.getAllTargets = (req, res) => {
     `;
 
     const params = [];
+    const filters = [];
 
+    // Filter berdasarkan shift (jika ada)
     if (nama_shift) {
-        sql += ` WHERE s.nama_shift = ? `;
+        filters.push(`s.nama_shift = ?`);
         params.push(nama_shift);
+    }
+
+    // Filter berdasarkan bulan (jika ada)
+    if (bulan) {
+        filters.push(`MONTH(t.tanggal) = ?`);
+        params.push(bulan);
+    }
+
+    // Filter berdasarkan tahun (jika ada)
+    if (tahun) {
+        filters.push(`YEAR(t.tanggal) = ?`);
+        params.push(tahun);
+    }
+
+    // Tambahkan WHERE jika ada filter
+    if (filters.length > 0) {
+        sql += ` WHERE ` + filters.join(" AND ");
     }
 
     sql += `

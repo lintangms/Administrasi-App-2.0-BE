@@ -55,6 +55,8 @@ exports.getFarmingByNip = (req, res) => {
 exports.createFarming = (req, res) => {
     const { NIP, koin, ket, nama_game } = req.body;
     const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    const currentMonth = new Date().getMonth() + 1; // Current month (1-12)
+    const currentYear = new Date().getFullYear(); // Current year
 
     // Cari id_game berdasarkan nama_game
     const sqlGetGame = 'SELECT id_game FROM game WHERE nama_game = ?';
@@ -84,90 +86,96 @@ exports.createFarming = (req, res) => {
                     const totalDijual = dijualResults[0].total_dijual || 0;
                     const saldoKoinBaru = totalKoin - totalDijual;
 
-                    // Update saldo_koin di tabel koin
-                    const sqlUpdateSaldoKoin = `
+                    // Selalu buat record baru di tabel koin
+                    const sqlInsertKoin = `
                         INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
                         VALUES (?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE jumlah = VALUES(jumlah), saldo_koin = VALUES(saldo_koin), tanggal = VALUES(tanggal);
                     `;
 
-                    db.query(sqlUpdateSaldoKoin, [NIP, id_game, totalKoin, saldoKoinBaru, currentDate], (err, updateResults) => {
-                        if (err) return res.status(500).json({ message: 'Gagal update saldo koin', error: err });
+                    db.query(sqlInsertKoin, [NIP, id_game, totalKoin, saldoKoinBaru, currentDate], (err, insertKoinResults) => {
+                        if (err) return res.status(500).json({ message: 'Gagal menambahkan record koin baru', error: err });
 
-                        // Ambil id_koin terbaru setelah update
-                        const sqlGetIdKoin = 'SELECT id_koin FROM koin WHERE NIP = ? AND id_game = ? ORDER BY tanggal DESC LIMIT 1';
-                        db.query(sqlGetIdKoin, [NIP, id_game], (err, koinResults) => {
-                            if (err) return res.status(500).json({ message: 'Gagal mengambil id_koin', error: err });
+                        const id_koin = insertKoinResults.insertId;
+                        console.log(`ID KOIN TERBARU: ${id_koin} untuk NIP: ${NIP}`);
 
-                            if (koinResults.length === 0) return res.status(500).json({ message: 'id_koin tidak ditemukan' });
+                        // Ambil target di bulan dan tahun yang sama dengan bulan dan tahun saat ini
+                        const sqlGetTargetByMonth = `
+                            SELECT id_target, target 
+                            FROM target 
+                            WHERE NIP = ? 
+                            AND MONTH(tanggal) = ? 
+                            AND YEAR(tanggal) = ?
+                            ORDER BY tanggal DESC 
+                            LIMIT 1
+                        `;
+                        
+                        db.query(sqlGetTargetByMonth, [NIP, currentMonth, currentYear], (err, targetMonthResults) => {
+                            if (err) {
+                                console.error('Gagal mengambil target bulan ini:', err);
+                                return res.status(500).json({ message: 'Gagal mengambil target bulan ini', error: err });
+                            }
 
-                            const id_koin = koinResults[0].id_koin;
+                            // Jika ada target di bulan dan tahun yang sama, update id_koin
+                            if (targetMonthResults.length > 0) {
+                                const id_target = targetMonthResults[0].id_target;
+                                const target = targetMonthResults[0].target;
+                                const persentase = target > 0 ? (saldoKoinBaru / target) * 100 : 0;
 
-                            console.log(`ID KOIN TERBARU: ${id_koin} untuk NIP: ${NIP}`);
+                                // Update id_koin dan persentase di tabel target untuk bulan dan tahun yang sama
+                                const sqlUpdateTargetMonth = `
+                                    UPDATE target 
+                                    SET id_koin = ?, persentase = ? 
+                                    WHERE id_target = ?
+                                `;
 
-                            // Update id_koin di tabel target
-                            const sqlUpdateTarget = `
-                                UPDATE target 
-                                SET id_koin = ? 
-                                WHERE NIP = ? 
-                                AND id_target = (SELECT id_target FROM (SELECT id_target FROM target WHERE NIP = ? ORDER BY tanggal DESC LIMIT 1) AS subquery)
-                                LIMIT 1;
-                            `;
+                                db.query(sqlUpdateTargetMonth, [id_koin, persentase, id_target], (err, updateTargetResults) => {
+                                    if (err) {
+                                        console.error('Gagal update id_koin di tabel target:', err);
+                                        return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
+                                    }
 
-                            db.query(sqlUpdateTarget, [id_koin, NIP, NIP], (err, updateTargetResults) => {
-                                if (err) {
-                                    console.error('Gagal update id_koin di tabel target:', err);
-                                    return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
-                                }
+                                    console.log(`UPDATE TARGET: ${updateTargetResults.affectedRows} baris diubah untuk NIP: ${NIP} di bulan ${currentMonth} tahun ${currentYear}`);
 
-                                console.log(`UPDATE TARGET: ${updateTargetResults.affectedRows} baris diubah untuk NIP: ${NIP}`);
-
-                                // Ambil target terbaru untuk menghitung persentase
-                                const sqlGetTarget = 'SELECT target FROM target WHERE NIP = ? ORDER BY tanggal DESC LIMIT 1';
-                                db.query(sqlGetTarget, [NIP], (err, targetResults) => {
-                                    if (err) return res.status(500).json({ message: 'Gagal mengambil target', error: err });
-
-                                    if (targetResults.length === 0) return res.status(500).json({ message: 'Target tidak ditemukan' });
-
-                                    const target = targetResults[0].target;
-                                    const persentase = target > 0 ? (saldoKoinBaru / target) * 100 : 0;
-
-                                    // Update persentase di tabel target
-                                    const sqlUpdatePersentase = `
-                                        UPDATE target 
-                                        SET persentase = ? 
-                                        WHERE NIP = ? 
-                                        AND id_target = (SELECT id_target FROM (SELECT id_target FROM target WHERE NIP = ? ORDER BY tanggal DESC LIMIT 1) AS subquery)
-                                        LIMIT 1;
-                                    `;
-
-                                    db.query(sqlUpdatePersentase, [persentase, NIP, NIP], (err, updatePersentaseResults) => {
-                                        if (err) {
-                                            console.error('Gagal update persentase di tabel target:', err);
-                                            return res.status(500).json({ message: 'Gagal mengupdate persentase di tabel target', error: err });
+                                    res.status(201).json({
+                                        message: 'Data farming berhasil ditambahkan, record koin baru dibuat, dan target bulan ini diperbarui',
+                                        data: { 
+                                            id_farming: insertResults.insertId, 
+                                            NIP, 
+                                            totalKoin, 
+                                            saldo_koin: saldoKoinBaru, 
+                                            ket, 
+                                            id_game, 
+                                            nama_game, 
+                                            tanggal: currentDate,
+                                            id_koin,
+                                            target,
+                                            persentase,
+                                            bulan: currentMonth,
+                                            tahun: currentYear
                                         }
-
-                                        console.log(`UPDATE PERSENTASE: ${updatePersentaseResults.affectedRows} baris diubah untuk NIP: ${NIP}`);
-
-                                        res.status(201).json({
-                                            message: 'Data farming berhasil ditambahkan, saldo koin diperbarui, koin dan persentase diperbarui di target',
-                                            data: { 
-                                                id_farming: insertResults.insertId, 
-                                                NIP, 
-                                                totalKoin, 
-                                                saldo_koin: saldoKoinBaru, 
-                                                ket, 
-                                                id_game, 
-                                                nama_game, 
-                                                tanggal: currentDate,
-                                                id_koin,
-                                                target,
-                                                persentase
-                                            }
-                                        });
                                     });
                                 });
-                            });
+                            } else {
+                                // Jika tidak ada target di bulan yang sama, kembalikan respons tanpa mengupdate target
+                                console.log(`Tidak ada target di bulan ${currentMonth} tahun ${currentYear} untuk NIP: ${NIP}`);
+                                
+                                res.status(201).json({
+                                    message: 'Data farming berhasil ditambahkan dan record koin baru dibuat. Tidak ada target untuk bulan ini.',
+                                    data: { 
+                                        id_farming: insertResults.insertId, 
+                                        NIP, 
+                                        totalKoin, 
+                                        saldo_koin: saldoKoinBaru, 
+                                        ket, 
+                                        id_game, 
+                                        nama_game, 
+                                        tanggal: currentDate,
+                                        id_koin,
+                                        bulan: currentMonth,
+                                        tahun: currentYear
+                                    }
+                                });
+                            }
                         });
                     });
                 });
