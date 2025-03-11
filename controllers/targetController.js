@@ -1,7 +1,7 @@
 const db = require('../config/db');
 // Get all target records with optional filtering by shift, month, and year, and include karyawan name
 exports.getAllTargets = (req, res) => {
-    const { nama_shift, bulan, tahun } = req.query; // Ambil parameter dari query
+    const { nama_shift, nama_game, bulan, tahun } = req.query; // Ambil parameter dari query
 
     let sql = `
         SELECT t.id_target, t.nip, kar.nama AS nama_karyawan, t.target, t.tanggal, 
@@ -29,6 +29,12 @@ exports.getAllTargets = (req, res) => {
     if (nama_shift) {
         filters.push(`s.nama_shift = ?`);
         params.push(nama_shift);
+    }
+
+    // Filter berdasarkan nama game (jika ada)
+    if (nama_game) {
+        filters.push(`game.nama_game = ?`);
+        params.push(nama_game);
     }
 
     // Filter berdasarkan bulan (jika ada)
@@ -60,6 +66,7 @@ exports.getAllTargets = (req, res) => {
         res.status(200).json({ message: "Data target berhasil diambil", data: results });
     });
 };
+
 
 
 

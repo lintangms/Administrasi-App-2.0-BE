@@ -341,9 +341,6 @@ exports.getKaryawanById = (req, res) => {
 };
 
 
-
-
-
 // Delete a karyawan
 exports.deleteKaryawan = (req, res) => {
     const { id } = req.params;
