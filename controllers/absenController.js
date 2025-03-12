@@ -256,7 +256,7 @@ exports.getAllAbsensi = (req, res) => {
             (CASE 
                 WHEN MAX(CASE WHEN a.status = 'izin' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'izin'
                 WHEN MAX(CASE WHEN a.status = 'tidak_masuk' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'tidak_masuk'
-                WHEN MAX(CASE WHEN a.status = 'masuk' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'masuk'
+                WHEN MAX(CASE WHEN a.status = 'hadir' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'hadir'
                 ELSE 'belum absen'
             END) AS status
         FROM karyawan k
