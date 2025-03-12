@@ -254,7 +254,9 @@ exports.getAllAbsensi = (req, res) => {
             COALESCE(MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_masuk,
             COALESCE(MAX(CASE WHEN a.tipe = 'pulang' AND a.tanggal = ? THEN DATE_FORMAT(a.waktu, '%Y-%m-%d %H:%i:%s') END), NULL) AS waktu_pulang,
             (CASE 
-                WHEN MAX(CASE WHEN a.tipe = 'masuk' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'masuk'
+                WHEN MAX(CASE WHEN a.status = 'izin' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'izin'
+                WHEN MAX(CASE WHEN a.status = 'tidak_masuk' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'tidak_masuk'
+                WHEN MAX(CASE WHEN a.status = 'masuk' AND a.tanggal = ? THEN 1 ELSE 0 END) = 1 THEN 'masuk'
                 ELSE 'belum absen'
             END) AS status
         FROM karyawan k
@@ -268,8 +270,8 @@ exports.getAllAbsensi = (req, res) => {
     // Gunakan tanggal yang dipilih, jika tidak ada gunakan tanggal hari ini
     const filterTanggal = tanggal || new Date().toISOString().split('T')[0];
 
-    // Tambahkan tanggal ke parameter query sebanyak 5 kali (karena dipakai dalam 5 kondisi)
-    params.push(filterTanggal, filterTanggal, filterTanggal, filterTanggal, filterTanggal);
+    // Tambahkan tanggal ke parameter query sebanyak 7 kali (karena dipakai dalam 7 kondisi)
+    params.push(filterTanggal, filterTanggal, filterTanggal, filterTanggal, filterTanggal, filterTanggal, filterTanggal);
 
     // Filter berdasarkan nama jika diberikan
     if (nama) {
