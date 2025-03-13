@@ -5,7 +5,7 @@ exports.getAllTargets = (req, res) => {
 
     let sql = `
         SELECT t.id_target, t.nip, kar.nama AS nama_karyawan, t.target, t.tanggal, 
-               t.id_game, game.nama_game,
+               t.id_game, game.nama_game, t.ket,
                COALESCE(k.saldo_koin, 0) AS saldo_koin,
                COALESCE(g.gaji_kotor, 0) AS gaji_kotor,
                ROUND(COALESCE((k.saldo_koin / t.target) * 100, 0), 2) AS persentase,
@@ -56,7 +56,7 @@ exports.getAllTargets = (req, res) => {
 
     sql += `
         GROUP BY t.id_target, t.nip, kar.nama, t.target, t.tanggal, t.id_game, game.nama_game, 
-                 k.saldo_koin, g.gaji_kotor, s.nama_shift
+                 k.saldo_koin, g.gaji_kotor, s.nama_shift, t.ket
         ORDER BY t.tanggal DESC;
     `;
 
@@ -66,9 +66,6 @@ exports.getAllTargets = (req, res) => {
         res.status(200).json({ message: "Data target berhasil diambil", data: results });
     });
 };
-
-
-
 
 
 // Get target by NIP with saldo_koin from the corresponding id_koin
@@ -91,39 +88,36 @@ exports.getTargetByNIP = (req, res) => {
     });
 };
 
-
-
-
 // Create new target
 exports.createTarget = (req, res) => {
-    const { nip, target, tanggal, nama_game } = req.body;
+    const { nip, target, tanggal, nama_game, ket } = req.body;
 
     if (!nip || !target || !tanggal || !nama_game) {
         return res.status(400).json({ message: "NIP, target, tanggal, dan nama game harus diisi" });
     }
 
     const sql = 
-        `INSERT INTO target (nip, target, tanggal, id_game, persentase) 
+        `INSERT INTO target (nip, target, tanggal, id_game, persentase, ket) 
         VALUES (?, ?, ?, 
             (SELECT id_game FROM game WHERE nama_game = ? LIMIT 1),
-            (SELECT ROUND(COALESCE((k.saldo_koin / ?)*100, 0), 2) FROM koin k WHERE k.nip = ? ORDER BY k.tanggal DESC LIMIT 1)
+            (SELECT ROUND(COALESCE((k.saldo_koin / ?)*100, 0), 2) FROM koin k WHERE k.nip = ? ORDER BY k.tanggal DESC LIMIT 1),
+            ?
         )`;
 
-    db.query(sql, [nip, target, tanggal, nama_game, target, nip], (err, results) => {
+    db.query(sql, [nip, target, tanggal, nama_game, target, nip, ket || null], (err, results) => {
         if (err) return res.status(500).json({ message: "Error creating target", error: err });
 
         res.status(201).json({ 
             message: "Target berhasil ditambahkan", 
-            data: { id_target: results.insertId, nip, target, tanggal, nama_game } 
+            data: { id_target: results.insertId, nip, target, tanggal, nama_game, ket } 
         });
     });
 };
 
-
 // Update target
 exports.updateTarget = (req, res) => {
     const { id } = req.params;
-    const { target, tanggal, nama_game } = req.body;
+    const { target, tanggal, nama_game, ket } = req.body;
 
     if (!target || !tanggal || !nama_game) {
         return res.status(400).json({ message: "Target, tanggal, dan nama game harus diisi" });
@@ -135,16 +129,18 @@ exports.updateTarget = (req, res) => {
             id_koin = (SELECT id_koin FROM koin WHERE nip = (SELECT nip FROM target WHERE id_target = ?) ORDER BY tanggal DESC LIMIT 1), 
             id_gaji = (SELECT id_gaji FROM gaji WHERE nip = (SELECT nip FROM target WHERE id_target = ?) ORDER BY tgl_transaksi DESC LIMIT 1), 
             id_game = (SELECT id_game FROM game WHERE nama_game = ? LIMIT 1),
-            persentase = (SELECT ROUND(COALESCE((k.saldo_koin / ?)*100, 0), 2) FROM koin k WHERE k.nip = (SELECT nip FROM target WHERE id_target = ?) ORDER BY k.tanggal DESC LIMIT 1)
+            persentase = (SELECT ROUND(COALESCE((k.saldo_koin / ?)*100, 0), 2) FROM koin k WHERE k.nip = (SELECT nip FROM target WHERE id_target = ?) ORDER BY k.tanggal DESC LIMIT 1),
+            ket = ?
         WHERE id_target = ?`;
 
-    db.query(sql, [target, tanggal, id, id, nama_game, target, id, id], (err, results) => {
+    db.query(sql, [target, tanggal, id, id, nama_game, target, id, ket || null, id], (err, results) => {
         if (err) return res.status(500).json({ message: "Error updating target", error: err });
         if (results.affectedRows === 0) return res.status(404).json({ message: "Target tidak ditemukan" });
 
-        res.status(200).json({ message: "Target berhasil diperbarui", data: { id_target: id, target, tanggal, nama_game } });
+        res.status(200).json({ message: "Target berhasil diperbarui", data: { id_target: id, target, tanggal, nama_game, ket } });
     });
 };
+
 
 // Delete target
 exports.deleteTarget = (req, res) => {
