@@ -1,13 +1,21 @@
 const db = require('../config/db');
 
-// Get all farming records with optional date, shift, game, and name filtering
 exports.getAllFarming = (req, res) => {
-    const { periode, nama_shift, nama_game, nama } = req.query; // Periode dalam format YYYY-MM-DD
+    const { bulan, tahun, minggu_bulan, nama_shift, nama_game, nama, order = 'DESC' } = req.query; // minggu_bulan = 1, 2, 3, 4
 
     let sql = `
-        SELECT pf.*, k.nama, s.nama_shift, g.nama_game, a.username_steam
-        FROM perolehan_farming pf
-        LEFT JOIN karyawan k ON pf.nip = k.nip
+        SELECT k.nip, k.nama, COALESCE(s.nama_shift, '') as nama_shift, COALESCE(g.nama_game, '') as nama_game, COALESCE(a.username_steam, '') as username_steam, 
+               COALESCE(koin.id_koin, '') as id_koin, COALESCE(koin.tanggal, '') as tanggal, COALESCE(koin.saldo_koin, 0) as saldo
+        FROM karyawan k
+        LEFT JOIN (
+            SELECT k1.*
+            FROM koin k1
+            WHERE k1.id_koin = (
+                SELECT ${order === 'ASC' ? 'MIN' : 'MAX'}(k2.id_koin)
+                FROM koin k2
+                WHERE k1.nip = k2.nip
+            )
+        ) koin ON k.nip = koin.nip
         LEFT JOIN shift s ON k.id_shift = s.id_shift
         LEFT JOIN game g ON k.id_game = g.id_game
         LEFT JOIN akun a ON k.id_akun = a.id_akun
@@ -16,9 +24,19 @@ exports.getAllFarming = (req, res) => {
     let params = [];
     let conditions = [];
 
-    if (periode) {
-        conditions.push('DATE(pf.periode) = ?');
-        params.push(periode);
+    if (bulan) {
+        conditions.push('MONTH(koin.tanggal) = ?');
+        params.push(bulan);
+    }
+
+    if (tahun) {
+        conditions.push('YEAR(koin.tanggal) = ?');
+        params.push(tahun);
+    }
+
+    if (minggu_bulan) {
+        conditions.push('CEIL(DAY(koin.tanggal) / 7) = ?');
+        params.push(minggu_bulan);
     }
 
     if (nama_shift) {
@@ -40,30 +58,39 @@ exports.getAllFarming = (req, res) => {
         sql += ' WHERE ' + conditions.join(' AND ');
     }
 
-    sql += ' ORDER BY pf.id_farming DESC';
+    sql += ` ORDER BY k.nip, koin.id_koin ${order}`;
 
     db.query(sql, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
-        res.status(200).json({ message: 'Semua data farming berhasil diambil', data: results });
+        res.status(200).json({ message: 'Semua data saldo koin berhasil diambil', data: results });
     });
 };
 
 
 
-
-// Get all farming records by NIP with date filtering
+// Get all farming records by NIP with date filtering and additional info
 exports.getFarmingByNip = (req, res) => {
     const { NIP } = req.params;
     const { start_date, end_date } = req.query;
 
-    let sql = 'SELECT * FROM perolehan_farming WHERE NIP = ?';
+    let sql = `
+        SELECT pf.*, k.nama, s.nama_shift, g.nama_game, a.username_steam
+        FROM perolehan_farming pf
+        LEFT JOIN karyawan k ON pf.nip = k.nip
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
+        LEFT JOIN game g ON k.id_game = g.id_game
+        LEFT JOIN akun a ON k.id_akun = a.id_akun
+        WHERE pf.nip = ?
+    `;
+
     let params = [NIP];
 
-    // Tambahkan filter tanggal jika diberikan
     if (start_date && end_date) {
-        sql += ' AND periode BETWEEN ? AND ?';
+        sql += ' AND pf.periode BETWEEN ? AND ?';
         params.push(start_date, end_date);
     }
+
+    sql += ' ORDER BY pf.periode DESC';
 
     db.query(sql, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });

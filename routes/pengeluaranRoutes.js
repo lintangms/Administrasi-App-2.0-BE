@@ -4,6 +4,7 @@ const pengeluaranController = require('../controllers/pengeluaranController');
 
 // Routes
 router.get('/get', pengeluaranController.getAllPengeluaran);
+router.get('/total', pengeluaranController.getTotalPengeluaran);
 router.get('/get/:id', pengeluaranController.getPengeluaranById);
 router.post('/add', pengeluaranController.createPengeluaran);
 router.put('/update/:id', pengeluaranController.updatePengeluaran);

@@ -7,7 +7,8 @@ router.get('/get', kasbonController.getAllKasbon);
 router.get('/options', kasbonController.getKasbonOptions);
 router.get('/get/:NIP', kasbonController.getKasbonByNip)
 router.post('/add', kasbonController.createKasbon); 
-router.put('/update/:id', kasbonController.updateKasbon); 
+router.put('/status/:id', kasbonController.updateKasbonStatus);
+router.put('/konfirmasi/:id', kasbonController.updateKasbonKonfirmasi) 
 router.delete('/:id', kasbonController.deleteKasbon); 
 
 module.exports = router;

@@ -8,7 +8,10 @@ router.post('/alpha', absenController.absenTidakMasuk);
 router.get('/status/:NIP', absenController.getStatusByNIP);
 router.get('/rekap/:NIP', absenController.getAbsenRekapByNIP);
 router.get('/absensiqr/:NIP', absenController.scanQR);
-router.get('/get', absenController.getAllAbsensi)
-router.get('/get/:NIP' , absenController.getAbsenByNIP)
+router.get('/get', absenController.getAllAbsensi);
+router.get('/get/:NIP' , absenController.getAbsenByNIP);
+router.put('/update/:id_absen', absenController.updateKeteranganAbsen);
+router.get('/rekapabsen', absenController.getRekapAbsensi);
+router.get('/absensi/:nip', absenController.getByNIP);
 
 module.exports = router;
