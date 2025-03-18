@@ -4,8 +4,10 @@ exports.getAllFarming = (req, res) => {
     const { bulan, tahun, minggu_bulan, nama_shift, nama_game, nama, order = 'DESC' } = req.query; // minggu_bulan = 1, 2, 3, 4
 
     let sql = `
-        SELECT k.nip, k.nama, COALESCE(s.nama_shift, '') as nama_shift, COALESCE(g.nama_game, '') as nama_game, COALESCE(a.username_steam, '') as username_steam, 
-               COALESCE(koin.id_koin, '') as id_koin, COALESCE(koin.tanggal, '') as tanggal, COALESCE(koin.saldo_koin, 0) as saldo
+        SELECT k.nip, k.nama, COALESCE(s.nama_shift, '') as nama_shift, COALESCE(g.nama_game, '') as nama_game, 
+               COALESCE(a.username_steam, '') as username_steam, COALESCE(koin.id_koin, '') as id_koin, 
+               COALESCE(koin.tanggal, '') as tanggal, COALESCE(koin.saldo_koin, 0) as saldo,
+               (SELECT SUM(k3.saldo_koin) FROM koin k3 WHERE k3.nip = k.nip) AS total_saldo
         FROM karyawan k
         LEFT JOIN (
             SELECT k1.*
@@ -65,7 +67,6 @@ exports.getAllFarming = (req, res) => {
         res.status(200).json({ message: 'Semua data saldo koin berhasil diambil', data: results });
     });
 };
-
 
 
 // Get all farming records by NIP with date filtering and additional info
