@@ -1,22 +1,23 @@
 const db = require('../config/db');
 
 exports.getAllFarming = (req, res) => {
-    const { bulan, tahun, minggu_bulan, nama_shift, nama_game, nama, order = 'DESC' } = req.query; // minggu_bulan = 1, 2, 3, 4
+    const { tanggal, bulan, tahun, minggu_bulan, nama_shift, nama_game, nama, order = 'DESC' } = req.query;
 
     let sql = `
-        SELECT k.nip, k.nama, COALESCE(s.nama_shift, '') as nama_shift, COALESCE(g.nama_game, '') as nama_game, 
-               COALESCE(a.username_steam, '') as username_steam, COALESCE(koin.id_koin, '') as id_koin, 
-               COALESCE(koin.tanggal, '') as tanggal, COALESCE(koin.saldo_koin, 0) as saldo,
-               (SELECT SUM(k3.saldo_koin) FROM koin k3 WHERE k3.nip = k.nip) AS total_saldo
+        SELECT k.nip, k.nama, 
+               COALESCE(s.nama_shift, '') as nama_shift, 
+               COALESCE(g.nama_game, '') as nama_game, 
+               COALESCE(a.username_steam, '') as username_steam, 
+               COALESCE(koin.id_koin, '') as id_koin, 
+               COALESCE(koin.tanggal, '') as tanggal, 
+               COALESCE(koin.saldo_koin, 0) as saldo,
+               COALESCE(koin.total_saldo, 0) AS total_saldo
         FROM karyawan k
         LEFT JOIN (
-            SELECT k1.*
+            SELECT k1.nip, k1.id_koin, k1.tanggal,
+                   (SELECT saldo_koin FROM koin WHERE nip = k1.nip ORDER BY id_koin ${order} LIMIT 1) AS saldo_koin,
+                   (SELECT SUM(jumlah) FROM koin WHERE nip = k1.nip) AS total_saldo
             FROM koin k1
-            WHERE k1.id_koin = (
-                SELECT ${order === 'ASC' ? 'MIN' : 'MAX'}(k2.id_koin)
-                FROM koin k2
-                WHERE k1.nip = k2.nip
-            )
         ) koin ON k.nip = koin.nip
         LEFT JOIN shift s ON k.id_shift = s.id_shift
         LEFT JOIN game g ON k.id_game = g.id_game
@@ -25,6 +26,11 @@ exports.getAllFarming = (req, res) => {
 
     let params = [];
     let conditions = [];
+
+    if (tanggal) {
+        conditions.push('DATE(koin.tanggal) = ?');
+        params.push(tanggal);
+    }
 
     if (bulan) {
         conditions.push('MONTH(koin.tanggal) = ?');
@@ -67,6 +73,7 @@ exports.getAllFarming = (req, res) => {
         res.status(200).json({ message: 'Semua data saldo koin berhasil diambil', data: results });
     });
 };
+
 
 
 // Get all farming records by NIP with date filtering and additional info
