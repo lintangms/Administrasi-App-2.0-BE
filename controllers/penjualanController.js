@@ -157,73 +157,32 @@ exports.createPenjualan = (req, res) => {
     });
 };
 
-
-
 exports.getAllPenjualan = (req, res) => {
-    const { bulan, tahun, nama_game } = req.query;
-
-    // Query untuk mendapatkan id_game berdasarkan nama_game
-    const sqlGetIdGame = `SELECT id_game FROM game WHERE nama_game = ?`;
-
-    if (nama_game) {
-        db.query(sqlGetIdGame, [nama_game], (err, gameResults) => {
-            if (err) return res.status(500).json({ message: 'Error fetching game ID', error: err });
-
-            if (gameResults.length === 0) {
-                return res.status(404).json({ message: `Game dengan nama "${nama_game}" tidak ditemukan` });
-            }
-
-            const id_game = gameResults[0].id_game;
-            fetchPenjualan(res, bulan, tahun, id_game);
-        });
-    } else {
-        fetchPenjualan(res, bulan, tahun, null);
-    }
-};
-
-function fetchPenjualan(res, bulan, tahun, id_game) {
-    let sqlGetPenjualan = `
+    let sql = `
         SELECT 
-            p.*, 
-            k.dijual,
-            g.nama_game,
-            karyawan.nama
+            p.id_penjualan, 
+            p.tgl_transaksi, 
+            p.NIP, 
+            k.nama AS nama_karyawan, 
+            p.server, 
+            p.demand, 
+            p.id_koin, 
+            p.rate, 
+            p.koin_dijual, 
+            p.id_rate, 
+            p.jumlah_uang, 
+            p.ket
         FROM penjualan p
-        LEFT JOIN koin k ON p.id_koin = k.id_koin
-        LEFT JOIN perolehan_farming pf ON k.NIP = pf.NIP
-        LEFT JOIN game g ON pf.id_game = g.id_game
-        LEFT JOIN karyawan ON pf.NIP = karyawan.NIP
+        JOIN karyawan k ON p.NIP = k.NIP
+        ORDER BY p.tgl_transaksi DESC
     `;
 
-    let params = [];
-    let conditions = [];
+    db.query(sql, (err, results) => {
+        if (err) return res.status(500).json({ message: 'Error fetching data', error: err });
 
-    if (bulan) {
-        conditions.push('MONTH(p.tgl_transaksi) = ?');
-        params.push(bulan);
-    }
-    if (tahun) {
-        conditions.push('YEAR(p.tgl_transaksi) = ?');
-        params.push(tahun);
-    }
-    if (id_game) {
-        conditions.push('g.id_game = ?');
-        params.push(id_game);
-    }
-
-    if (conditions.length > 0) {
-        sqlGetPenjualan += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    db.query(sqlGetPenjualan, params, (err, results) => {
-        if (err) return res.status(500).json({ message: 'Error fetching penjualan', error: err });
-
-        res.status(200).json({
-            message: 'Data penjualan berhasil diambil',
-            data: results
-        });
+        return res.json({ message: "Data penjualan berhasil diambil", data: results });
     });
-}
+};
 
 
 exports.getAverageRate = (req, res) => {

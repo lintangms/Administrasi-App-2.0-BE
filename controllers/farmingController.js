@@ -16,8 +16,9 @@ exports.getAllFarming = (req, res) => {
         LEFT JOIN (
             SELECT k1.nip, k1.id_koin, k1.tanggal,
                    (SELECT saldo_koin FROM koin WHERE nip = k1.nip ORDER BY id_koin ${order} LIMIT 1) AS saldo_koin,
-                   (SELECT SUM(jumlah) FROM koin WHERE nip = k1.nip) AS total_saldo
+                   (SELECT jumlah FROM koin WHERE nip = k1.nip ORDER BY id_koin ${order} LIMIT 1) AS total_saldo
             FROM koin k1
+            GROUP BY k1.nip
         ) koin ON k.nip = koin.nip
         LEFT JOIN shift s ON k.id_shift = s.id_shift
         LEFT JOIN game g ON k.id_game = g.id_game
@@ -26,44 +27,53 @@ exports.getAllFarming = (req, res) => {
 
     let params = [];
     let conditions = [];
+    let filterConditions = [];
 
-    if (tanggal) {
-        conditions.push('DATE(koin.tanggal) = ?');
-        params.push(tanggal);
-    }
-
+    // Bulan, Tahun, dan Tanggal: tetap menampilkan semua karyawan
     if (bulan) {
-        conditions.push('MONTH(koin.tanggal) = ?');
+        conditions.push('(koin.tanggal IS NULL OR MONTH(koin.tanggal) = ?)');
         params.push(bulan);
     }
 
     if (tahun) {
-        conditions.push('YEAR(koin.tanggal) = ?');
+        conditions.push('(koin.tanggal IS NULL OR YEAR(koin.tanggal) = ?)');
         params.push(tahun);
     }
 
+    if (tanggal) {
+        conditions.push('(koin.tanggal IS NULL OR DATE(koin.tanggal) = ?)');
+        params.push(tanggal);
+    }
+
+    // Filtering lainnya (benar-benar menyaring data)
     if (minggu_bulan) {
-        conditions.push('CEIL(DAY(koin.tanggal) / 7) = ?');
+        filterConditions.push('CEIL(DAY(koin.tanggal) / 7) = ?');
         params.push(minggu_bulan);
     }
 
     if (nama_shift) {
-        conditions.push('s.nama_shift = ?');
+        filterConditions.push('s.nama_shift = ?');
         params.push(nama_shift);
     }
 
     if (nama_game) {
-        conditions.push('g.nama_game = ?');
+        filterConditions.push('g.nama_game = ?');
         params.push(nama_game);
     }
 
     if (nama) {
-        conditions.push('k.nama LIKE ?');
+        filterConditions.push('k.nama LIKE ?');
         params.push(`%${nama}%`);
     }
 
+    // Gabungkan kondisi WHERE
     if (conditions.length > 0) {
         sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    if (filterConditions.length > 0) {
+        sql += conditions.length > 0 ? ' AND ' : ' WHERE ';
+        sql += filterConditions.join(' AND ');
     }
 
     sql += ` ORDER BY k.nip, koin.id_koin ${order}`;
