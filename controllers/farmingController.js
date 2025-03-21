@@ -14,9 +14,11 @@ exports.getAllFarming = (req, res) => {
                COALESCE(koin.total_saldo, 0) AS total_saldo
         FROM karyawan k
         LEFT JOIN (
-            SELECT k1.nip, k1.id_koin, k1.tanggal,
-                   (SELECT saldo_koin FROM koin WHERE nip = k1.nip ORDER BY id_koin ${order} LIMIT 1) AS saldo_koin,
-                   (SELECT jumlah FROM koin WHERE nip = k1.nip ORDER BY id_koin ${order} LIMIT 1) AS total_saldo
+            SELECT k1.nip, 
+                   MAX(k1.id_koin) AS id_koin, 
+                   MAX(k1.tanggal) AS tanggal,
+                   (SELECT saldo_koin FROM koin k2 WHERE k2.nip = k1.nip ORDER BY k2.id_koin ${order} LIMIT 1) AS saldo_koin,
+                   (SELECT jumlah FROM koin k2 WHERE k2.nip = k1.nip ORDER BY k2.id_koin ${order} LIMIT 1) AS total_saldo
             FROM koin k1
             GROUP BY k1.nip
         ) koin ON k.nip = koin.nip
