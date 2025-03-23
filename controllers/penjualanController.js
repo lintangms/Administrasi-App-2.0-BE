@@ -158,9 +158,12 @@ const db = require('../config/db');
 // };
 
 exports.createPenjualan = (req, res) => {
-    const { NIP, id_koin, server, demand, rate, ket, koin_dijual } = req.body;
-    const tgl_transaksi = new Date().toISOString().split('T')[0];
+    const { NIP, id_koin, server, demand, rate, ket, koin_dijual, tgl_transaksi } = req.body;
     const jumlah_uang = rate * koin_dijual;
+
+    if (!tgl_transaksi) {
+        return res.status(400).json({ message: 'Tanggal transaksi harus diisi' });
+    }
 
     // Ambil jumlah koin, saldo koin, dijual, dan id_game dari tabel koin
     const sqlGetKoin = 'SELECT jumlah, dijual, saldo_koin, id_game FROM koin WHERE id_koin = ? AND NIP = ?';
@@ -233,6 +236,7 @@ exports.createPenjualan = (req, res) => {
         });
     });
 };
+
 
 
 exports.getAllPenjualan = (req, res) => {
