@@ -87,7 +87,6 @@ exports.getAllFarming = (req, res) => {
 };
 
 
-
 // Get all farming records by NIP with date filtering and additional info
 exports.getFarmingByNip = (req, res) => {
     const { NIP } = req.params;
