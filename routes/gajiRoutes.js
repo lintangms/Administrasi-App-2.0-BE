@@ -10,5 +10,6 @@ router.get('/getbaru', gajiController.getGajiBaru);
 router.get('/total', gajiController.getTotalGaji);
 router.post('/add', gajiController.addGaji);
 router.post('/gajiunsold', gajiController.updateUnsoldGaji);
+router.post('/addgaji', gajiController.addGajiLama);
 
 module.exports = router;

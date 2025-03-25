@@ -237,15 +237,13 @@ exports.createPenjualan = (req, res) => {
     });
 };
 
-
-
 exports.getAllPenjualan = (req, res) => {
     const { bulan, tahun, nama_game, nama } = req.query;
 
     let sql = `
         SELECT 
             p.id_penjualan, 
-            p.tgl_transaksi, 
+            CONVERT_TZ(p.tgl_transaksi, '+00:00', '+07:00') AS tgl_transaksi, 
             p.NIP, 
             k.nama AS nama_karyawan, 
             p.server, 
@@ -299,8 +297,6 @@ exports.getAllPenjualan = (req, res) => {
         return res.json({ message: "Data penjualan berhasil diambil", data: results });
     });
 };
-
-
 
 // exports.getAverageRate = (req, res) => {
 //     const { bulan, tahun } = req.query;
@@ -408,6 +404,50 @@ exports.getTotalUang = (req, res) => {
             message: 'Total koin dijual dan jumlah uang berhasil diambil',
             total_koin_dijual: results[0].total_koin_dijual,
             total_jumlah_uang: results[0].total_jumlah_uang
+        });
+    });
+};
+
+exports.insertAverageRate = (req, res) => {
+    const { nama_game, rata_rata_rate, bulan, tahun } = req.body; // Ambil input dari body request
+
+    if (!nama_game || !rata_rata_rate || !bulan || !tahun) {
+        return res.status(400).json({ message: 'Nama game, rata-rata rate, bulan, dan tahun harus diisi' });
+    }
+
+    // Format tanggal menjadi YYYY-MM-01 (set tanggal selalu ke 01)
+    const formattedDate = `${tahun}-${String(bulan).padStart(2, '0')}-01`;
+
+    // Cari id_game berdasarkan nama_game
+    let findGameQuery = `SELECT id_game FROM game WHERE nama_game = ? LIMIT 1`;
+
+    db.query(findGameQuery, [nama_game], (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error mencari ID game', error: err });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'Game tidak ditemukan' });
+        }
+
+        const id_game = results[0].id_game;
+
+        // Insert data ke dalam tabel rata-rata rate
+        let insertQuery = `INSERT INTO rate (id_game, rata_rata_rate, tanggal) VALUES (?, ?, ?)`;
+
+        db.query(insertQuery, [id_game, rata_rata_rate, formattedDate], (err, insertResults) => {
+            if (err) {
+                return res.status(500).json({ message: 'Error menyimpan data', error: err });
+            }
+            res.status(201).json({
+                message: 'Rata-rata rate berhasil disimpan',
+                data: {
+                    id_game,
+                    nama_game,
+                    rata_rata_rate,
+                    tanggal: formattedDate
+                }
+            });
         });
     });
 };

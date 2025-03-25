@@ -49,29 +49,46 @@ exports.createUnsold = (req, res) => {
 
 // GET ALL: Ambil semua data unsold (dengan filter bulan dan tahun opsional)
 exports.getAllUnsold = (req, res) => {
-    const { bulan, tahun } = req.query; // Ambil parameter bulan dan tahun dari query
+    const { bulan, tahun, nama, nama_game } = req.query; // Ambil parameter filter dari query
 
     let sql = `
-        SELECT u.id_unsold, u.NIP, u.koin, u.tanggal, u.harga_beli, u.total_harga, 
+        SELECT u.id_unsold, u.NIP, k.nama, u.koin, u.tanggal, u.harga_beli, u.total_harga, 
                g.id_game, g.nama_game, 
                a.id_akun, a.username_steam
         FROM unsold u
         JOIN game g ON u.id_game = g.id_game
         JOIN akun a ON u.id_akun = a.id_akun
+        JOIN karyawan k ON u.NIP = k.NIP
     `;
 
     let filterValues = [];
     let conditions = [];
 
+    // Filter berdasarkan bulan
     if (bulan) {
         conditions.push('MONTH(u.tanggal) = ?');
         filterValues.push(parseInt(bulan));
     }
+
+    // Filter berdasarkan tahun
     if (tahun) {
         conditions.push('YEAR(u.tanggal) = ?');
         filterValues.push(parseInt(tahun));
     }
 
+    // Filter berdasarkan nama karyawan (menggunakan LIKE untuk pencarian fleksibel)
+    if (nama) {
+        conditions.push('k.nama LIKE ?');
+        filterValues.push(`%${nama}%`);
+    }
+
+    // Filter berdasarkan nama game (menggunakan LIKE untuk pencarian fleksibel)
+    if (nama_game) {
+        filterConditions.push('g.nama_game = ?');
+        params.push(nama_game);
+    }
+
+    // Tambahkan kondisi WHERE jika ada filter
     if (conditions.length > 0) {
         sql += ' WHERE ' + conditions.join(' AND ');
     }
@@ -85,6 +102,7 @@ exports.getAllUnsold = (req, res) => {
         });
     });
 };
+
 
 // GET BY NIP: Ambil data unsold berdasarkan NIP (dengan filter bulan dan tahun opsional)
 exports.getUnsoldByNIP = (req, res) => {

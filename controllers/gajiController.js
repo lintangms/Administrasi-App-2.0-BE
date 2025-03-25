@@ -214,7 +214,6 @@ exports.getGajiBaru = (req, res) => {
     });
 };
 
-// Fungsi untuk mengambil data gaji karyawan dengan status "LAMA" dan total koin dari tabel UNSOLD serta data DIJUAL dari tabel KOIN
 exports.getGajiLama = (req, res) => {
     const { nama, bulan, tahun } = req.query;
     
@@ -232,9 +231,7 @@ exports.getGajiLama = (req, res) => {
             g.kasbon, 
             g.tunjangan_jabatan, 
             g.THP, 
-            g.tgl_transaksi,
-            COALESCE(SUM(u.koin), 0) AS total_unsold_koin,
-            COALESCE(koin.dijual, 0) AS total_dijual
+            g.tgl_transaksi
         FROM gaji g
         INNER JOIN karyawan k ON g.NIP = k.NIP
         INNER JOIN (
@@ -243,23 +240,16 @@ exports.getGajiLama = (req, res) => {
             WHERE MONTH(tgl_transaksi) = ? AND YEAR(tgl_transaksi) = ?
             GROUP BY NIP
         ) latest ON g.NIP = latest.NIP AND g.id_gaji = latest.max_id
-        LEFT JOIN unsold u ON g.NIP = u.NIP AND MONTH(u.tanggal) = ? AND YEAR(u.tanggal) = ?
-        LEFT JOIN (
-            SELECT k1.NIP, k1.dijual
-            FROM koin k1
-            WHERE k1.id_koin = (SELECT MAX(k2.id_koin) FROM koin k2 WHERE k2.NIP = k1.NIP)
-        ) koin ON g.NIP = koin.NIP
         WHERE k.status = 'LAMA'
     `;
 
-    let params = [filterBulan, filterTahun, filterBulan, filterTahun];
+    let params = [filterBulan, filterTahun];
 
     if (nama) {
         sql += " AND k.nama LIKE ?";
         params.push(`%${nama}%`);
     }
 
-    sql += " GROUP BY g.id_gaji, g.NIP, k.nama, g.gaji_kotor, g.potongan, g.kasbon, g.tunjangan_jabatan, g.THP, g.tgl_transaksi, koin.dijual";
     sql += " ORDER BY g.tgl_transaksi DESC";
 
     db.query(sql, params, (err, results) => {
@@ -275,7 +265,6 @@ exports.getGajiLama = (req, res) => {
         });
     });
 };
-
 
 
 exports.getTotalGaji = (req, res) => {
@@ -429,6 +418,82 @@ exports.updateUnsoldGaji = (req, res) => {
                     rata_rata_rate: rataRataRate,
                     hasil_perhitungan: tambahanGajiKotor,
                     affectedRows: updateResult.affectedRows
+                });
+            });
+        });
+    });
+};
+
+
+exports.addGajiLama = (req, res) => {
+    const { NIP, bulan, tahun } = req.body;
+
+    if (!NIP || !bulan || !tahun) {
+        return res.status(400).json({ message: 'NIP, bulan, dan tahun harus diisi' });
+    }
+
+    // Format periode jadi YYYY-MM-01 (set tanggal ke 1)
+    const periode = `${tahun}-${String(bulan).padStart(2, '0')}-01`;
+
+    // Ambil data koin dijual secara rinci berdasarkan transaksi
+    let getDetailKoinQuery = `
+        SELECT tgl_transaksi, koin_dijual 
+        FROM penjualan
+        WHERE NIP = ? AND MONTH(tgl_transaksi) = ? AND YEAR(tgl_transaksi) = ?
+        ORDER BY tgl_transaksi ASC
+    `;
+
+    db.query(getDetailKoinQuery, [NIP, bulan, tahun], (err, koinResults) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error mengambil data koin', error: err });
+        }
+
+        if (koinResults.length === 0) {
+            return res.status(404).json({ message: 'Tidak ada data penjualan untuk NIP ini pada periode yang dipilih' });
+        }
+
+        // Total koin dijual dari hasil transaksi
+        const total_koin = koinResults.reduce((sum, item) => sum + item.koin_dijual, 0);
+
+        // Ambil rata-rata rate dari tabel rate
+        let getRateQuery = `
+            SELECT rata_rata_rate
+            FROM rate
+            WHERE tanggal = ?
+        `;
+
+        db.query(getRateQuery, [periode], (err, rateResults) => {
+            if (err) {
+                return res.status(500).json({ message: 'Error mengambil rata-rata rate', error: err });
+            }
+
+            if (rateResults.length === 0) {
+                return res.status(404).json({ message: 'Rata-rata rate tidak ditemukan untuk periode ini' });
+            }
+
+            const rata_rata_rate = rateResults[0].rata_rata_rate;
+            const gaji_kotor = total_koin * rata_rata_rate;
+
+            // Simpan data gaji ke tabel gaji
+            let insertGajiQuery = `
+                INSERT INTO gaji (periode, tgl_transaksi, NIP, gaji_kotor, id_game)
+                VALUES (?, NOW(), ?, ?, (SELECT id_game FROM penjualan WHERE NIP = ? LIMIT 1))
+            `;
+
+            db.query(insertGajiQuery, [periode, NIP, gaji_kotor, NIP], (err, insertResults) => {
+                if (err) {
+                    return res.status(500).json({ message: 'Error menyimpan data gaji', error: err });
+                }
+                res.status(201).json({
+                    message: 'Gaji berhasil ditambahkan',
+                    data: {
+                        NIP,
+                        periode,
+                        transaksi: koinResults,
+                        total_koin,
+                        rata_rata_rate,
+                        gaji_kotor
+                    }
                 });
             });
         });
