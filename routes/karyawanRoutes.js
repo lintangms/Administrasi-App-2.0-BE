@@ -42,5 +42,6 @@ router.put('/gambar/:NIP',upload.single('gambar'), karyawanController.updateGamb
 router.delete('/delete/:id', karyawanController.deleteKaryawan);
 router.put('/password/:nip', karyawanController.updatePassword);
 router.get('/getbaru', karyawanController.getAllKaryawanBaru);
+router.get('/getlama', karyawanController.getAllKaryawanLama);
 
 module.exports = router;

@@ -11,5 +11,7 @@ router.get('/total', gajiController.getTotalGaji);
 router.post('/add', gajiController.addGaji);
 router.post('/gajiunsold', gajiController.updateUnsoldGaji);
 router.post('/addgaji', gajiController.addGajiLama);
+router.get('/getrate', gajiController.getAllRates);
+router.get('/koindetail', gajiController.getKoinDetails);
 
 module.exports = router;

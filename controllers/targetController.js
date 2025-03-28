@@ -6,12 +6,16 @@ exports.getAllTargets = (req, res) => {
     let sql = `
         SELECT t.id_target, t.nip, kar.nama AS nama_karyawan, t.target, t.tanggal, 
                t.id_game, game.nama_game, t.ket,
-               COALESCE(k.saldo_koin, 0) AS saldo_koin,
+               COALESCE(k.total_koin, 0) AS total_koin,
                COALESCE(g.gaji_kotor, 0) AS gaji_kotor,
-               ROUND(COALESCE((k.saldo_koin / t.target) * 100, 0), 2) AS persentase,
+               ROUND(COALESCE((k.total_koin / t.target) * 100, 0), 2) AS persentase,
                s.nama_shift
         FROM target t
-        LEFT JOIN koin k ON t.id_koin = k.id_koin
+        LEFT JOIN (
+            SELECT id_koin, nip, SUM(jumlah) AS total_koin 
+            FROM koin 
+            GROUP BY id_koin, nip
+        ) k ON t.id_koin = k.id_koin AND t.nip = k.nip
         LEFT JOIN (
             SELECT g1.nip, MAX(g1.tgl_transaksi) AS latest_tgl, MAX(g1.gaji_kotor) AS gaji_kotor
             FROM gaji g1
@@ -56,7 +60,7 @@ exports.getAllTargets = (req, res) => {
 
     sql += `
         GROUP BY t.id_target, t.nip, kar.nama, t.target, t.tanggal, t.id_game, game.nama_game, 
-                 k.saldo_koin, g.gaji_kotor, s.nama_shift, t.ket
+                 k.total_koin, g.gaji_kotor, s.nama_shift, t.ket
         ORDER BY t.tanggal DESC;
     `;
 
@@ -66,6 +70,7 @@ exports.getAllTargets = (req, res) => {
         res.status(200).json({ message: "Data target berhasil diambil", data: results });
     });
 };
+
 
 
 // Get target by NIP with saldo_koin from the corresponding id_koin

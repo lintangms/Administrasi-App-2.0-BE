@@ -231,6 +231,22 @@ exports.getAllKaryawanBaru = (req, res) => {
     });
 };
 
+// Get all karyawan dengan status "BARU"
+exports.getAllKaryawanLama = (req, res) => {
+    const sql = `SELECT NIP, nama 
+                 FROM karyawan 
+                 WHERE status = 'LAMA'`;
+
+    db.query(sql, (err, results) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ message: 'Error fetching karyawan', error: err });
+        } else {
+            res.status(200).json(results);
+        }
+    });
+};
+
 
 // Get a single karyawan by NIP
 exports.getKaryawanByNIP = (req, res) => {

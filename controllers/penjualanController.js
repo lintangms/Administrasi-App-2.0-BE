@@ -158,77 +158,81 @@ const db = require('../config/db');
 // };
 
 exports.createPenjualan = (req, res) => {
-    const { NIP, id_koin, server, demand, rate, ket, koin_dijual, tgl_transaksi } = req.body;
+    const { NIP, id_koin, id_wow, server, demand, rate, ket, koin_dijual, tgl_transaksi } = req.body;
     const jumlah_uang = rate * koin_dijual;
 
     if (!tgl_transaksi) {
         return res.status(400).json({ message: 'Tanggal transaksi harus diisi' });
     }
 
-    // Ambil jumlah koin, saldo koin, dijual, dan id_game dari tabel koin
-    const sqlGetKoin = 'SELECT jumlah, dijual, saldo_koin, id_game FROM koin WHERE id_koin = ? AND NIP = ?';
-    db.query(sqlGetKoin, [id_koin, NIP], (err, results) => {
+    const isWOW = id_wow !== undefined && id_wow !== null;
+    const sqlGetKoin = isWOW 
+        ? 'SELECT jumlah, saldo_koin, dijual, id_game FROM koin_wow WHERE id_wow = ?' 
+        : 'SELECT jumlah, dijual, saldo_koin, id_game FROM koin WHERE id_koin = ? AND NIP = ?';
+    
+    const params = isWOW ? [id_wow] : [id_koin, NIP];
+
+    db.query(sqlGetKoin, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error fetching koin data', error: err });
         if (results.length === 0) return res.status(404).json({ message: 'Koin tidak ditemukan' });
 
-        const { jumlah, dijual, saldo_koin, id_game } = results[0];
-        const newDijual = (dijual || 0) + koin_dijual;
-        const newSisa = jumlah - newDijual;
-        const newSaldoKoin = saldo_koin - koin_dijual;
+        let jumlah, saldo_koin, dijual, id_game = null, newDijual, newSisa, newSaldoKoin;
+        
+        jumlah = results[0].jumlah;
+        saldo_koin = results[0].saldo_koin;
+        dijual = results[0].dijual || 0;
+        id_game = results[0].id_game;
+
+        newDijual = dijual + koin_dijual;
+        newSisa = jumlah - newDijual;
+        newSaldoKoin = saldo_koin - koin_dijual;
 
         if (newSisa < 0) return res.status(400).json({ message: 'Jumlah koin tidak mencukupi untuk dijual' });
         if (newSaldoKoin < 0) return res.status(400).json({ message: 'Saldo koin tidak mencukupi' });
 
-        // Mulai transaksi
         db.beginTransaction(err => {
             if (err) return res.status(500).json({ message: 'Error initiating transaction', error: err });
 
-            // Insert data ke tabel penjualan dengan id_game
-            const sqlInsertPenjualan = 'INSERT INTO penjualan (tgl_transaksi, NIP, server, demand, id_koin, id_game, rate, ket, jumlah_uang, koin_dijual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-            db.query(sqlInsertPenjualan, [tgl_transaksi, NIP, server, demand, id_koin, id_game, rate, ket, jumlah_uang, koin_dijual], (err, insertResults) => {
+            const sqlInsertPenjualan = isWOW
+                ? 'INSERT INTO penjualan (tgl_transaksi, id_wow, server, demand, id_game, rate, ket, jumlah_uang, koin_dijual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                : 'INSERT INTO penjualan (tgl_transaksi, NIP, server, demand, id_koin, id_game, rate, ket, jumlah_uang, koin_dijual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+            
+            const insertParams = isWOW
+                ? [tgl_transaksi, id_wow, server, demand, id_game, rate, ket, jumlah_uang, koin_dijual]
+                : [tgl_transaksi, NIP, server, demand, id_koin, id_game, rate, ket, jumlah_uang, koin_dijual];
+
+            db.query(sqlInsertPenjualan, insertParams, (err) => {
                 if (err) return db.rollback(() => res.status(500).json({ message: 'Error inserting into penjualan', error: err }));
 
-                // Update saldo_koin, dijual, dan sisa di tabel koin
-                const sqlUpdateKoin = 'UPDATE koin SET dijual = ?, sisa = ?, saldo_koin = ? WHERE id_koin = ? AND NIP = ?';
-                db.query(sqlUpdateKoin, [newDijual, newSisa, newSaldoKoin, id_koin, NIP], (err) => {
+                const sqlUpdateKoin = isWOW
+                    ? 'UPDATE koin_wow SET dijual = ?, saldo_koin = ? WHERE id_wow = ?'
+                    : 'UPDATE koin SET dijual = ?, sisa = ?, saldo_koin = ? WHERE id_koin = ? AND NIP = ?';
+                
+                const updateParams = isWOW
+                    ? [newDijual, newSaldoKoin, id_wow]
+                    : [newDijual, newSisa, newSaldoKoin, id_koin, NIP];
+                
+                db.query(sqlUpdateKoin, updateParams, (err) => {
                     if (err) return db.rollback(() => res.status(500).json({ message: 'Error updating koin', error: err }));
 
-                    const currentMonth = new Date(tgl_transaksi).getMonth() + 1;
-                    const currentYear = new Date(tgl_transaksi).getFullYear();
+                    db.commit(err => {
+                        if (err) return db.rollback(() => res.status(500).json({ message: 'Error committing transaction', error: err }));
 
-                    // Hitung rata-rata rate berdasarkan id_game, bulan, dan tahun
-                    const sqlGetAvgRate = `
-                        SELECT ROUND(AVG(rate)) as avg_rate 
-                        FROM penjualan 
-                        WHERE id_game = ? 
-                        AND MONTH(tgl_transaksi) = ? 
-                        AND YEAR(tgl_transaksi) = ?`;
-
-                    db.query(sqlGetAvgRate, [id_game, currentMonth, currentYear], (err, avgResult) => {
-                        if (err) return db.rollback(() => res.status(500).json({ message: 'Error calculating average rate', error: err }));
-
-                        const avgRate = avgResult[0].avg_rate || 0;
-
-                        // Commit transaksi jika semua query berhasil
-                        db.commit(err => {
-                            if (err) return db.rollback(() => res.status(500).json({ message: 'Error committing transaction', error: err }));
-
-                            res.status(201).json({
-                                message: 'Penjualan berhasil, koin diperbarui, rata-rata rate dihitung berdasarkan id_game',
-                                data: {
-                                    NIP,
-                                    id_koin,
-                                    id_game,
-                                    server,
-                                    demand,
-                                    rate,
-                                    ket,
-                                    koin_dijual,
-                                    saldo_koin: newSaldoKoin,
-                                    jumlah_uang,
-                                    avgRate
-                                }
-                            });
+                        res.status(201).json({
+                            message: 'Penjualan berhasil',
+                            data: {
+                                id_wow: isWOW ? id_wow : null,
+                                NIP: isWOW ? null : NIP,
+                                id_koin: isWOW ? null : id_koin,
+                                id_game,
+                                server,
+                                demand,
+                                rate,
+                                ket,
+                                koin_dijual,
+                                saldo_koin: newSaldoKoin,
+                                jumlah_uang
+                            }
                         });
                     });
                 });
@@ -237,28 +241,43 @@ exports.createPenjualan = (req, res) => {
     });
 };
 
+
+
 exports.getAllPenjualan = (req, res) => {
-    const { bulan, tahun, nama_game, nama } = req.query;
+    const { bulan, tahun, nama_game, nama, id_wow } = req.query;
 
     let sql = `
         SELECT 
             p.id_penjualan, 
             CONVERT_TZ(p.tgl_transaksi, '+00:00', '+07:00') AS tgl_transaksi, 
-            p.NIP, 
-            k.nama AS nama_karyawan, 
+            CASE 
+                WHEN p.id_wow IS NOT NULL THEN 'WOW' 
+                ELSE p.NIP 
+            END AS NIP, 
+            CASE 
+                WHEN p.id_wow IS NOT NULL THEN 'WOW' 
+                ELSE k.nama 
+            END AS nama_karyawan, 
             p.server, 
             p.demand, 
-            p.id_koin, 
+            CASE 
+                WHEN p.id_wow IS NOT NULL THEN 0 
+                ELSE p.id_koin 
+            END AS id_koin, 
             p.rate, 
             p.koin_dijual, 
             p.id_rate, 
             p.jumlah_uang, 
-            p.ket,
-            g.nama_game
+            p.id_wow,
+            CASE 
+                WHEN p.id_wow IS NOT NULL THEN 'WOW' 
+                ELSE g.nama_game 
+            END AS nama_game,
+            p.ket
         FROM penjualan p
-        JOIN karyawan k ON p.NIP = k.NIP
-        JOIN koin ko ON p.id_koin = ko.id_koin
-        JOIN game g ON ko.id_game = g.id_game
+        LEFT JOIN karyawan k ON p.NIP = k.NIP
+        LEFT JOIN koin ko ON p.id_koin = ko.id_koin
+        LEFT JOIN game g ON ko.id_game = g.id_game
         WHERE 1=1
     `;
 
@@ -275,16 +294,30 @@ exports.getAllPenjualan = (req, res) => {
         params.push(parseInt(tahun));
     }
 
-    // Filter berdasarkan nama game
+    // Filter berdasarkan nama game, jika "WOW" maka ambil yang id_wow tidak null
     if (nama_game) {
-        sql += ` AND g.nama_game LIKE ?`;
-        params.push(`%${nama_game}%`);
+        if (nama_game.toUpperCase() === "WOW") {
+            sql += ` AND p.id_wow IS NOT NULL`;
+        } else {
+            sql += ` AND g.nama_game LIKE ?`;
+            params.push(`%${nama_game}%`);
+        }
     }
 
-    // Filter berdasarkan nama karyawan
+    // Filter berdasarkan nama karyawan, jika "WOW" maka ambil yang id_wow tidak null
     if (nama) {
-        sql += ` AND k.nama LIKE ?`;
-        params.push(`%${nama}%`);
+        if (nama.toUpperCase() === "WOW") {
+            sql += ` AND p.id_wow IS NOT NULL`;
+        } else {
+            sql += ` AND k.nama LIKE ?`;
+            params.push(`%${nama}%`);
+        }
+    }
+
+    // Filter berdasarkan id_wow
+    if (id_wow) {
+        sql += ` AND p.id_wow = ?`;
+        params.push(parseInt(id_wow));
     }
 
     sql += ` ORDER BY p.tgl_transaksi DESC`;
@@ -297,6 +330,8 @@ exports.getAllPenjualan = (req, res) => {
         return res.json({ message: "Data penjualan berhasil diambil", data: results });
     });
 };
+
+
 
 // exports.getAverageRate = (req, res) => {
 //     const { bulan, tahun } = req.query;
@@ -382,17 +417,29 @@ exports.getTotalUang = (req, res) => {
             COALESCE(SUM(p.koin_dijual), 0) AS total_koin_dijual,
             COALESCE(SUM(p.jumlah_uang), 0) AS total_jumlah_uang
         FROM penjualan p
-        JOIN koin k ON p.id_koin = k.id_koin
-        JOIN game g ON k.id_game = g.id_game
-        WHERE MONTH(p.tgl_transaksi) = ? AND YEAR(p.tgl_transaksi) = ?
     `;
 
     let params = [bulan, tahun];
 
-    // Filter berdasarkan nama_game
-    if (nama_game) {
-        sqlGetTotal += ` AND g.nama_game LIKE ?`;
-        params.push(`%${nama_game}%`);
+    // Jika nama_game adalah WOW, ambil dari id_wow
+    if (nama_game && nama_game.toLowerCase() === 'wow') {
+        sqlGetTotal += `
+            JOIN koin_wow kw ON p.id_wow = kw.id_wow
+            JOIN game g ON kw.id_game = g.id_game
+            WHERE MONTH(p.tgl_transaksi) = ? AND YEAR(p.tgl_transaksi) = ? AND g.nama_game = ? 
+        `;
+        params.push('WOW');
+    } else {
+        sqlGetTotal += `
+            JOIN koin k ON p.id_koin = k.id_koin
+            JOIN game g ON k.id_game = g.id_game
+            WHERE MONTH(p.tgl_transaksi) = ? AND YEAR(p.tgl_transaksi) = ?
+        `;
+
+        if (nama_game) {
+            sqlGetTotal += ` AND g.nama_game LIKE ?`;
+            params.push(`%${nama_game}%`);
+        }
     }
 
     db.query(sqlGetTotal, params, (err, results) => {
@@ -407,6 +454,7 @@ exports.getTotalUang = (req, res) => {
         });
     });
 };
+
 
 exports.insertAverageRate = (req, res) => {
     const { nama_game, rata_rata_rate, bulan, tahun } = req.body; // Ambil input dari body request

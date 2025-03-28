@@ -10,5 +10,6 @@ router.delete('/delete/:id', farmingController.deleteFarming);
 router.get('/totalkoin/:NIP', farmingController.getTotalKoin);
 router.get('/getall', farmingController.getAllTotalKoin);
 router.get('/getall/:NIP', farmingController.getTotalKoinByNIP);
+router.get('/koinwow', farmingController.getKoinTerakhirWOW);
 
 module.exports = router;
