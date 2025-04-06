@@ -1,84 +1,75 @@
 const db = require('../config/db');
 
 exports.getAllFarming = (req, res) => {
-    const { tanggal, bulan, tahun, minggu_bulan, nama_shift, nama_game, nama, order = 'DESC' } = req.query;
+    const { bulan, tahun, tanggal, minggu_bulan, nama_shift, nama_game, nama, order = 'DESC' } = req.query;
 
-    let sql = `
-        SELECT k.nip, k.nama, 
-               COALESCE(s.nama_shift, '') as nama_shift, 
-               COALESCE(g.nama_game, '') as nama_game, 
-               COALESCE(a.username_steam, '') as username_steam, 
-               COALESCE(koin.id_koin, '') as id_koin, 
-               COALESCE(koin.tanggal, '') as tanggal, 
-               COALESCE(koin.saldo_koin, 0) as saldo,
-               COALESCE(koin.total_saldo, 0) AS total_saldo
-        FROM karyawan k
-        LEFT JOIN (
-            SELECT k1.nip, 
-                   MAX(k1.id_koin) AS id_koin, 
-                   MAX(k1.tanggal) AS tanggal,
-                   (SELECT saldo_koin FROM koin k2 WHERE k2.nip = k1.nip ORDER BY k2.id_koin ${order} LIMIT 1) AS saldo_koin,
-                   (SELECT jumlah FROM koin k2 WHERE k2.nip = k1.nip ORDER BY k2.id_koin ${order} LIMIT 1) AS total_saldo
-            FROM koin k1
-            GROUP BY k1.nip
-        ) koin ON k.nip = koin.nip
-        LEFT JOIN shift s ON k.id_shift = s.id_shift
-        LEFT JOIN game g ON k.id_game = g.id_game
-        LEFT JOIN akun a ON k.id_akun = a.id_akun
-    `;
+    const bulanInt = bulan ? parseInt(bulan) : null;
+    const tahunInt = tahun ? parseInt(tahun) : null;
+    const tanggalVal = tanggal || null;
 
     let params = [];
-    let conditions = [];
-    let filterConditions = [];
+    let extraFilters = [];
 
-    // Bulan, Tahun, dan Tanggal: tetap menampilkan semua karyawan
-    if (bulan) {
-        conditions.push('(koin.tanggal IS NULL OR MONTH(koin.tanggal) = ?)');
-        params.push(bulan);
-    }
+    // Buat subquery koin sesuai bulan/tahun/tanggal jika diisi
+    let koinSubquery = `
+        SELECT koin1.*
+        FROM koin koin1
+        INNER JOIN (
+            SELECT nip, MAX(id_koin) as max_id
+            FROM koin
+            WHERE 1=1
+            ${bulanInt ? 'AND MONTH(tanggal) = ?' : ''}
+            ${tahunInt ? 'AND YEAR(tanggal) = ?' : ''}
+            ${tanggalVal ? 'AND DATE(tanggal) = ?' : ''}
+            GROUP BY nip
+        ) latest_koin ON koin1.nip = latest_koin.nip AND koin1.id_koin = latest_koin.max_id
+    `;
 
-    if (tahun) {
-        conditions.push('(koin.tanggal IS NULL OR YEAR(koin.tanggal) = ?)');
-        params.push(tahun);
-    }
+    // Tambahkan parameter untuk subquery
+    if (bulanInt) params.push(bulanInt);
+    if (tahunInt) params.push(tahunInt);
+    if (tanggalVal) params.push(tanggalVal);
 
-    if (tanggal) {
-        conditions.push('(koin.tanggal IS NULL OR DATE(koin.tanggal) = ?)');
-        params.push(tanggal);
-    }
-
-    // Filtering lainnya (benar-benar menyaring data)
+    // Filter tambahan (benar-benar menyaring hasil akhir)
     if (minggu_bulan) {
-        filterConditions.push('CEIL(DAY(koin.tanggal) / 7) = ?');
+        extraFilters.push('CEIL(DAY(koin.tanggal) / 7) = ?');
         params.push(minggu_bulan);
     }
 
     if (nama_shift) {
-        filterConditions.push('s.nama_shift = ?');
+        extraFilters.push('s.nama_shift = ?');
         params.push(nama_shift);
     }
 
     if (nama_game) {
-        filterConditions.push('g.nama_game = ?');
+        extraFilters.push('g.nama_game = ?');
         params.push(nama_game);
     }
 
     if (nama) {
-        filterConditions.push('k.nama LIKE ?');
+        extraFilters.push('k.nama LIKE ?');
         params.push(`%${nama}%`);
     }
 
-    // Gabungkan kondisi WHERE
-    if (conditions.length > 0) {
-        sql += ' WHERE ' + conditions.join(' AND ');
-    }
-
-    if (filterConditions.length > 0) {
-        sql += conditions.length > 0 ? ' AND ' : ' WHERE ';
-        sql += filterConditions.join(' AND ');
-    }
-
-    sql += ` ORDER BY k.nip, koin.id_koin ${order}`;
+    const sql = `
+        SELECT 
+            k.nip, 
+            k.nama, 
+            COALESCE(s.nama_shift, '') as nama_shift,
+            COALESCE(g.nama_game, '') as nama_game,
+            COALESCE(a.username_steam, '') as username_steam,
+            COALESCE(koin.id_koin, '') as id_koin,
+            COALESCE(koin.tanggal, '') as tanggal,
+            COALESCE(koin.saldo_koin, 0) as saldo,
+            COALESCE(koin.jumlah, 0) as total_saldo
+        FROM karyawan k
+        LEFT JOIN (${koinSubquery}) koin ON k.nip = koin.nip
+        LEFT JOIN shift s ON k.id_shift = s.id_shift
+        LEFT JOIN game g ON k.id_game = g.id_game
+        LEFT JOIN akun a ON k.id_akun = a.id_akun
+        ${extraFilters.length > 0 ? 'WHERE ' + extraFilters.join(' AND ') : ''}
+        ORDER BY k.nip, koin.id_koin ${order}
+    `;
 
     db.query(sql, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
@@ -201,146 +192,203 @@ exports.createFarming = (req, res) => {
         db.query(sqlInsert, [NIP, koin, ket, id_game], (err, insertResults) => {
             if (err) return res.status(500).json({ message: 'Error pada server', error: err });
 
-            // Hitung total koin berdasarkan id_game dan NIP
-            const sqlSumKoin = 'SELECT SUM(koin) AS total_koin FROM perolehan_farming WHERE NIP = ? AND id_game = ?';
-            db.query(sqlSumKoin, [NIP, id_game], (err, sumResults) => {
-                if (err) return res.status(500).json({ message: 'Gagal menghitung total koin', error: err });
+            // Hitung total koin yang sudah ada di saldo berdasarkan id_game dan NIP
+            const sqlGetLastSaldo = `
+                SELECT saldo_koin 
+                FROM koin 
+                WHERE NIP = ? AND id_game = ? 
+                ORDER BY id_koin DESC 
+                LIMIT 1
+            `;
+            db.query(sqlGetLastSaldo, [NIP, id_game], (err, lastSaldoResults) => {
+                if (err) return res.status(500).json({ message: 'Gagal mendapatkan saldo koin terakhir', error: err });
 
-                const totalKoin = sumResults[0].total_koin || 0;
+                // Ambil saldo terakhir jika ada, jika tidak ada set ke 0
+                const lastSaldo = lastSaldoResults.length > 0 ? lastSaldoResults[0].saldo_koin : 0;
+                
+                // Hitung jumlah koin bulan ini saja untuk NIP dan game tertentu
+                const sqlSumMonthlyKoin = `
+                    SELECT SUM(koin) AS total_koin_bulan_ini 
+                    FROM perolehan_farming 
+                    WHERE NIP = ? 
+                    AND id_game = ? 
+                    AND MONTH(periode) = ? 
+                    AND YEAR(periode) = ?
+                `;
+                
+                db.query(sqlSumMonthlyKoin, [NIP, id_game, currentMonth, currentYear], (err, monthlyResults) => {
+                    if (err) return res.status(500).json({ message: 'Gagal menghitung total koin bulan ini', error: err });
 
-                // Hitung total koin yang telah dijual berdasarkan NIP dan id_game
-                const sqlSumDijual = 'SELECT SUM(dijual) AS total_dijual FROM koin WHERE NIP = ? AND id_game = ?';
-                db.query(sqlSumDijual, [NIP, id_game], (err, dijualResults) => {
-                    if (err) return res.status(500).json({ message: 'Gagal mengambil data total dijual', error: err });
+                    // Jumlah koin untuk bulan ini saja
+                    const totalKoinBulanIni = monthlyResults[0].total_koin_bulan_ini || 0;
+                    
+                    // Hitung total koin yang telah dijual berdasarkan NIP dan id_game
+                    const sqlSumDijual = 'SELECT SUM(dijual) AS total_dijual FROM koin WHERE NIP = ? AND id_game = ?';
+                    db.query(sqlSumDijual, [NIP, id_game], (err, dijualResults) => {
+                        if (err) return res.status(500).json({ message: 'Gagal mengambil data total dijual', error: err });
 
-                    const totalDijual = dijualResults[0].total_dijual || 0;
-                    const saldoKoinBaru = totalKoin - totalDijual;
+                        const totalDijual = dijualResults[0].total_dijual || 0;
+                        
+                        // Saldo koin baru = saldo terakhir + koin baru yang diinput
+                        const saldoKoinBaru = lastSaldo + parseInt(koin);
 
-                    // Insert record baru di tabel koin
-                    const sqlInsertKoin = `
-                        INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
-                        VALUES (?, ?, ?, ?, ?)
-                    `;
-                    db.query(sqlInsertKoin, [NIP, id_game, totalKoin, saldoKoinBaru, currentDate], (err, insertKoinResults) => {
-                        if (err) return res.status(500).json({ message: 'Gagal menambahkan record koin baru', error: err });
+                        // Insert record baru di tabel koin
+                        const sqlInsertKoin = `
+                            INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
+                            VALUES (?, ?, ?, ?, ?)
+                        `;
+                        db.query(sqlInsertKoin, [NIP, id_game, totalKoinBulanIni, saldoKoinBaru, currentDate], (err, insertKoinResults) => {
+                            if (err) return res.status(500).json({ message: 'Gagal menambahkan record koin baru', error: err });
 
-                        const id_koin = insertKoinResults.insertId;
+                            const id_koin = insertKoinResults.insertId;
 
-                        // Jika game adalah "WOW", buat logika yang sama untuk koin_wow berdasarkan id_game
-                        if (nama_game === "WOW") {
-                            // Hitung total koin WOW dari semua NIP untuk game WOW
-                            const sqlSumAllKoinWow = 'SELECT SUM(koin) AS total_koin FROM perolehan_farming WHERE id_game = ?';
-                            db.query(sqlSumAllKoinWow, [id_game], (err, sumWowResults) => {
-                                if (err) return res.status(500).json({ message: 'Gagal menghitung total koin untuk koin_wow', error: err });
+                            // Jika game adalah "WOW", buat logika yang sama untuk koin_wow berdasarkan id_game
+                            if (nama_game === "WOW") {
+                                // Hitung total koin WOW untuk bulan ini dari semua NIP untuk game WOW
+                                const sqlSumMonthlyKoinWow = `
+                                    SELECT SUM(koin) AS total_koin_bulan_ini 
+                                    FROM perolehan_farming 
+                                    WHERE id_game = ? 
+                                    AND MONTH(periode) = ?
+                                    AND YEAR(periode) = ?
+                                `;
+                                db.query(sqlSumMonthlyKoinWow, [id_game, currentMonth, currentYear], (err, monthlyWowResults) => {
+                                    if (err) return res.status(500).json({ message: 'Gagal menghitung total koin WOW bulan ini', error: err });
 
-                                const totalKoinWow = sumWowResults[0].total_koin || 0;
+                                    const totalKoinWowBulanIni = monthlyWowResults[0].total_koin_bulan_ini || 0;
 
-                                // Hitung total koin WOW yang telah dijual
-                                const sqlSumDijualWow = 'SELECT SUM(dijual) AS total_dijual FROM koin_wow WHERE id_game = ?';
-                                db.query(sqlSumDijualWow, [id_game], (err, dijualWowResults) => {
-                                    if (err) return res.status(500).json({ message: 'Gagal mengambil data total dijual WOW', error: err });
+                                    // Dapatkan saldo terakhir koin WOW
+                                    const sqlGetLastSaldoWow = `
+                                        SELECT saldo_koin 
+                                        FROM koin_wow 
+                                        WHERE id_game = ? 
+                                        ORDER BY id_wow DESC 
+                                        LIMIT 1
+                                    `;
+                                    db.query(sqlGetLastSaldoWow, [id_game], (err, lastSaldoWowResults) => {
+                                        if (err) return res.status(500).json({ message: 'Gagal mendapatkan saldo koin WOW terakhir', error: err });
 
-                                    const totalDijualWow = dijualWowResults[0].total_dijual || 0;
-                                    const saldoKoinWow = totalKoinWow - totalDijualWow;
+                                        const lastSaldoWow = lastSaldoWowResults.length > 0 ? lastSaldoWowResults[0].saldo_koin : 0;
+                                        
+                                        // Hitung total koin WOW yang telah dijual
+                                        const sqlSumDijualWow = 'SELECT SUM(dijual) AS total_dijual FROM koin_wow WHERE id_game = ?';
+                                        db.query(sqlSumDijualWow, [id_game], (err, dijualWowResults) => {
+                                            if (err) return res.status(500).json({ message: 'Gagal mengambil data total dijual WOW', error: err });
 
-                                    // Cek apakah sudah ada record koin_wow untuk game WOW
-                                    const sqlCheckKoinWow = 'SELECT id_wow FROM koin_wow WHERE id_game = ? LIMIT 1';
-                                    db.query(sqlCheckKoinWow, [id_game], (err, checkResults) => {
-                                        if (err) return res.status(500).json({ message: 'Gagal memeriksa data koin_wow', error: err });
+                                            const totalDijualWow = dijualWowResults[0].total_dijual || 0;
+                                            
+                                            // Pastikan input koin dikonversi ke integer untuk operasi matematis
+                                            const saldoKoinWowBaru = lastSaldoWow + parseInt(koin);
 
-                                        if (checkResults.length > 0) {
-                                            // Update existing koin_wow record
-                                            const sqlUpdateKoinWow = `
-                                                UPDATE koin_wow 
-                                                SET jumlah = ?, saldo_koin = ?, tanggal = ?
-                                                WHERE id_game = ?
+                                            // Cek apakah sudah ada record koin_wow untuk game WOW bulan ini
+                                            const sqlCheckKoinWow = `
+                                                SELECT id_wow 
+                                                FROM koin_wow 
+                                                WHERE id_game = ? 
+                                                AND MONTH(tanggal) = ? 
+                                                AND YEAR(tanggal) = ? 
+                                                LIMIT 1
                                             `;
-                                            db.query(sqlUpdateKoinWow, [totalKoinWow, saldoKoinWow, currentDate, id_game], (err) => {
-                                                if (err) return res.status(500).json({ message: 'Gagal mengupdate record koin_wow', error: err });
+                                            db.query(sqlCheckKoinWow, [id_game, currentMonth, currentYear], (err, checkResults) => {
+                                                if (err) return res.status(500).json({ message: 'Gagal memeriksa data koin_wow', error: err });
+
+                                                if (checkResults.length > 0) {
+                                                    // Update existing koin_wow record untuk bulan ini
+                                                    const sqlUpdateKoinWow = `
+                                                        UPDATE koin_wow 
+                                                        SET jumlah = ?, saldo_koin = ?, tanggal = ?
+                                                        WHERE id_game = ? 
+                                                        AND MONTH(tanggal) = ? 
+                                                        AND YEAR(tanggal) = ?
+                                                    `;
+                                                    db.query(sqlUpdateKoinWow, [totalKoinWowBulanIni, saldoKoinWowBaru, currentDate, id_game, currentMonth, currentYear], (err) => {
+                                                        if (err) return res.status(500).json({ message: 'Gagal mengupdate record koin_wow', error: err });
+                                                    });
+                                                } else {
+                                                    // Insert new koin_wow record
+                                                    const sqlInsertKoinWow = `
+                                                        INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
+                                                        VALUES (?, ?, ?, ?, ?)
+                                                    `;
+                                                    db.query(sqlInsertKoinWow, [NIP, id_game, totalKoinWowBulanIni, saldoKoinWowBaru, currentDate], (err) => {
+                                                        if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
+                                                    });
+                                                }
                                             });
-                                        } else {
-                                            // Insert new koin_wow record
-                                            const sqlInsertKoinWow = `
-                                                INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
-                                                VALUES (?, ?, ?, ?, ?)
-                                            `;
-                                            db.query(sqlInsertKoinWow, [NIP, id_game, totalKoinWow, saldoKoinWow, currentDate], (err) => {
-                                                if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
-                                            });
-                                        }
+                                        });
                                     });
                                 });
-                            });
-                        }
-
-                        // Ambil target di bulan dan tahun yang sama
-                        const sqlGetTargetByMonth = `
-                            SELECT id_target, target 
-                            FROM target 
-                            WHERE NIP = ? 
-                            AND MONTH(tanggal) = ? 
-                            AND YEAR(tanggal) = ?
-                            ORDER BY tanggal DESC 
-                            LIMIT 1
-                        `;
-                        db.query(sqlGetTargetByMonth, [NIP, currentMonth, currentYear], (err, targetMonthResults) => {
-                            if (err) {
-                                return res.status(500).json({ message: 'Gagal mengambil target bulan ini', error: err });
                             }
 
-                            if (targetMonthResults.length > 0) {
-                                const id_target = targetMonthResults[0].id_target;
-                                const target = targetMonthResults[0].target;
-                                const persentase = target > 0 ? (saldoKoinBaru / target) * 100 : 0;
+                            // Ambil target di bulan dan tahun yang sama
+                            const sqlGetTargetByMonth = `
+                                SELECT id_target, target 
+                                FROM target 
+                                WHERE NIP = ? 
+                                AND MONTH(tanggal) = ? 
+                                AND YEAR(tanggal) = ?
+                                ORDER BY tanggal DESC 
+                                LIMIT 1
+                            `;
+                            db.query(sqlGetTargetByMonth, [NIP, currentMonth, currentYear], (err, targetMonthResults) => {
+                                if (err) {
+                                    return res.status(500).json({ message: 'Gagal mengambil target bulan ini', error: err });
+                                }
 
-                                // Update id_koin dan persentase di tabel target untuk bulan dan tahun yang sama
-                                const sqlUpdateTargetMonth = `
-                                    UPDATE target 
-                                    SET id_koin = ?, persentase = ? 
-                                    WHERE id_target = ?
-                                `;
-                                db.query(sqlUpdateTargetMonth, [id_koin, persentase, id_target], (err, updateTargetResults) => {
-                                    if (err) {
-                                        return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
-                                    }
+                                if (targetMonthResults.length > 0) {
+                                    const id_target = targetMonthResults[0].id_target;
+                                    const target = targetMonthResults[0].target;
+                                    const persentase = target > 0 ? (saldoKoinBaru / target) * 100 : 0;
 
+                                    // Update id_koin dan persentase di tabel target untuk bulan dan tahun yang sama
+                                    const sqlUpdateTargetMonth = `
+                                        UPDATE target 
+                                        SET id_koin = ?, persentase = ? 
+                                        WHERE id_target = ?
+                                    `;
+                                    db.query(sqlUpdateTargetMonth, [id_koin, persentase, id_target], (err, updateTargetResults) => {
+                                        if (err) {
+                                            return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
+                                        }
+
+                                        res.status(201).json({
+                                            message: 'Data farming berhasil ditambahkan, record koin baru dibuat, dan target bulan ini diperbarui',
+                                            data: { 
+                                                id_farming: insertResults.insertId, 
+                                                NIP, 
+                                                totalKoinBulanIni, 
+                                                saldo_koin: saldoKoinBaru, 
+                                                ket, 
+                                                id_game, 
+                                                nama_game, 
+                                                tanggal: currentDate,
+                                                id_koin,
+                                                target,
+                                                persentase,
+                                                bulan: currentMonth,
+                                                tahun: currentYear
+                                            }
+                                        });
+                                    });
+                                } else {
                                     res.status(201).json({
-                                        message: 'Data farming berhasil ditambahkan, record koin baru dibuat, dan target bulan ini diperbarui',
+                                        message: 'Data farming berhasil ditambahkan dan record koin baru dibuat. Tidak ada target untuk bulan ini.',
                                         data: { 
                                             id_farming: insertResults.insertId, 
                                             NIP, 
-                                            totalKoin, 
+                                            totalKoinBulanIni, 
                                             saldo_koin: saldoKoinBaru, 
                                             ket, 
                                             id_game, 
                                             nama_game, 
                                             tanggal: currentDate,
                                             id_koin,
-                                            target,
-                                            persentase,
                                             bulan: currentMonth,
                                             tahun: currentYear
                                         }
                                     });
-                                });
-                            } else {
-                                res.status(201).json({
-                                    message: 'Data farming berhasil ditambahkan dan record koin baru dibuat. Tidak ada target untuk bulan ini.',
-                                    data: { 
-                                        id_farming: insertResults.insertId, 
-                                        NIP, 
-                                        totalKoin, 
-                                        saldo_koin: saldoKoinBaru, 
-                                        ket, 
-                                        id_game, 
-                                        nama_game, 
-                                        tanggal: currentDate,
-                                        id_koin,
-                                        bulan: currentMonth,
-                                        tahun: currentYear
-                                    }
-                                });
-                            }
+                                }
+                            });
                         });
                     });
                 });
@@ -348,8 +396,6 @@ exports.createFarming = (req, res) => {
         });
     });
 };
-
-
 // Update record
 exports.updateFarming = (req, res) => {
     const { id } = req.params;
@@ -382,50 +428,35 @@ exports.deleteFarming = (req, res) => {
 exports.getTotalKoin = (req, res) => {
     const { NIP } = req.params;
 
-    // Query untuk mendapatkan jumlah & saldo_koin dari record terbaru di database
-    const sqlJumlahSaldo = `
-        SELECT jumlah AS total_koin, saldo_koin
+    // Ambil data terbaru berdasarkan id_koin DESC
+    const sql = `
+        SELECT jumlah AS total_koin, saldo_koin, dijual
         FROM koin
         WHERE NIP = ?
         ORDER BY id_koin DESC
         LIMIT 1
     `;
 
-    // Query untuk mendapatkan total dijual dari record terbaru yang tidak NULL
-    const sqlDijual = `
-        SELECT dijual AS total_dijual
-        FROM koin
-        WHERE NIP = ? AND dijual IS NOT NULL
-        ORDER BY id_koin DESC
-        LIMIT 1
-    `;
-
-    db.query(sqlJumlahSaldo, [NIP], (err, resultJumlahSaldo) => {
-        if (err) return res.status(500).json({ message: 'Error fetching jumlah & saldo_koin', error: err });
-
-        // Jika tidak ada data sama sekali untuk jumlah & saldo_koin
-        if (resultJumlahSaldo.length === 0) {
-            return res.status(404).json({ message: 'Tidak ada data jumlah & saldo_koin' });
+    db.query(sql, [NIP], (err, result) => {
+        if (err) {
+            return res.status(500).json({ message: 'Gagal mengambil data koin terbaru', error: err });
         }
 
-        const total_koin = resultJumlahSaldo[0].total_koin;
-        const saldo_koin = resultJumlahSaldo[0].saldo_koin;
+        if (result.length === 0) {
+            return res.status(404).json({ message: 'Data koin tidak ditemukan untuk NIP tersebut' });
+        }
 
-        db.query(sqlDijual, [NIP], (err, resultDijual) => {
-            if (err) return res.status(500).json({ message: 'Error fetching dijual', error: err });
+        const { total_koin, saldo_koin, dijual } = result[0];
 
-            // Jika tidak ada data untuk dijual
-            const total_dijual = resultDijual.length > 0 ? resultDijual[0].total_dijual : "Tidak ada data dijual";
-
-            res.status(200).json({
-                NIP,
-                total_koin,
-                total_dijual,
-                saldo_koin
-            });
+        res.status(200).json({
+            NIP,
+            total_koin,
+            total_dijual: dijual !== null ? dijual : "Tidak ada data dijual",
+            saldo_koin
         });
     });
 };
+
 
 exports.getAllTotalKoin = (req, res) => {
     const now = new Date();
@@ -547,44 +578,48 @@ exports.getTotalKoinByNIP = (req, res) => {
 
     const bulan = req.query.bulan ? parseInt(req.query.bulan) : currentMonth;
     const tahun = req.query.tahun ? parseInt(req.query.tahun) : currentYear;
-    const { NIP } = req.params; // Ambil NIP dari parameter URL
+    const { NIP } = req.params;
 
     const sql = `
-        SELECT k.NIP, ky.nama, 
-               (SELECT saldo_koin FROM koin WHERE NIP = k.NIP ORDER BY tanggal DESC LIMIT 1) AS total_saldo_koin,
-               (SELECT dijual FROM koin WHERE NIP = k.NIP ORDER BY tanggal DESC LIMIT 1) AS total_dijual,
-               SUM(k.jumlah) AS total_koin
+        SELECT k.NIP, ky.nama,
+               k.jumlah AS total_koin,
+               k.saldo_koin AS total_saldo_koin,
+               k.dijual AS total_dijual
         FROM koin k
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
-        WHERE k.NIP = ? 
+        WHERE k.NIP = ?
         AND EXISTS (
             SELECT 1 FROM perolehan_farming pf
             WHERE pf.NIP = k.NIP 
             AND MONTH(pf.periode) = ? 
             AND YEAR(pf.periode) = ?
         )
-        GROUP BY k.NIP, ky.nama
+        ORDER BY k.tanggal DESC
+        LIMIT 1
     `;
 
     db.query(sql, [NIP, bulan, tahun], (err, results) => {
-        if (err) return res.status(500).json({ message: 'Error fetching total koin for NIP', error: err });
+        if (err) return res.status(500).json({ message: 'Gagal mengambil data koin terbaru berdasarkan NIP', error: err });
 
         if (results.length === 0) {
             return res.status(404).json({ message: `Tidak ada data koin untuk NIP ${NIP} pada periode ${bulan}-${tahun}` });
         }
 
+        const result = results[0];
+
         res.status(200).json({
-            message: `Data total koin untuk NIP ${NIP} pada periode ${bulan}-${tahun} berhasil diambil`,
+            message: `Data terbaru koin untuk NIP ${NIP} pada periode ${bulan}-${tahun} berhasil diambil`,
             data: {
-                NIP: results[0].NIP,
-                nama: results[0].nama,
-                total_saldo_koin: results[0].total_saldo_koin || 0,
-                total_dijual: results[0].total_dijual || 0,
-                total_koin: results[0].total_koin || 0
+                NIP: result.NIP,
+                nama: result.nama,
+                total_koin: result.total_koin || 0,
+                total_saldo_koin: result.total_saldo_koin || 0,
+                total_dijual: result.total_dijual || 0
             }
         });
     });
 };
+
 
 exports.getKoinTerakhirWOW = (req, res) => {
     const sqlGetTotalKoinWOW = `
