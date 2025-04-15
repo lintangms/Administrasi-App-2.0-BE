@@ -472,18 +472,23 @@ exports.getAllTotalKoin = (req, res) => {
 
 function fetchTotalKoin(res, bulan, tahun, namaGame) {
     let sql = `
-        SELECT k.id_koin, k.NIP, ky.nama, 
-               COALESCE(k.saldo_koin, 0) AS saldo_koin, 
-               COALESCE(k.jumlah, 0) AS total_koin, 
-               COALESCE((
-                    SELECT k2.dijual 
-                    FROM koin k2 
-                    WHERE k2.NIP = k.NIP 
-                    AND k2.dijual IS NOT NULL 
-                    ORDER BY k2.id_koin DESC 
-                    LIMIT 1
-               ), '') AS total_dijual, 
-               g.nama_game
+        SELECT 
+            k.id_koin, 
+            k.NIP, 
+            ky.nama, 
+            COALESCE(k.saldo_koin, 0) AS saldo_koin, 
+            COALESCE(k.jumlah, 0) AS total_koin, 
+            COALESCE((
+                SELECT k2.dijual 
+                FROM koin k2 
+                WHERE k2.NIP = k.NIP 
+                  AND k2.dijual IS NOT NULL 
+                  AND MONTH(k2.tanggal) = ? 
+                  AND YEAR(k2.tanggal) = ?
+                ORDER BY k2.id_koin DESC 
+                LIMIT 1
+            ), '') AS total_dijual, 
+            g.nama_game
         FROM koin k
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
         INNER JOIN (
@@ -497,7 +502,7 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
         AND YEAR(pf.periode) = ?
     `;
 
-    const queryParams = [bulan, tahun];
+    const queryParams = [bulan, tahun, bulan, tahun];
 
     if (namaGame) {
         sql += " AND g.nama_game = ?";
@@ -516,7 +521,7 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
             });
         }
 
-        fetchTotalKoinWOW((wowData) => {
+        fetchTotalKoinWOW(bulan, tahun, (wowData) => {
             const filteredResults = results.filter(item => item.nama_game !== "WOW");
 
             res.status(200).json({
@@ -527,24 +532,30 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
     });
 }
 
-function fetchTotalKoinWOW(callback) {
+function fetchTotalKoinWOW(bulan, tahun, callback) {
     const sqlGetTotalKoinWOW = `
-        SELECT id_wow, 
-               COALESCE(jumlah, 0) AS total_koin,  
-               COALESCE(saldo_koin, 0) AS saldo_koin, 
-               COALESCE((
-                    SELECT kw2.dijual 
-                    FROM koin_wow kw2 
-                    WHERE kw2.dijual IS NOT NULL 
-                    ORDER BY kw2.id_wow DESC 
-                    LIMIT 1
-               ), '') AS total_dijual
+        SELECT 
+            id_wow, 
+            COALESCE(jumlah, 0) AS total_koin,  
+            COALESCE(saldo_koin, 0) AS saldo_koin, 
+            COALESCE((
+                SELECT kw2.dijual 
+                FROM koin_wow kw2 
+                WHERE kw2.dijual IS NOT NULL 
+                  AND MONTH(kw2.tanggal) = ? 
+                  AND YEAR(kw2.tanggal) = ?
+                ORDER BY kw2.id_wow DESC 
+                LIMIT 1
+            ), '') AS total_dijual
         FROM koin_wow 
+        WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ?
         ORDER BY id_wow DESC 
         LIMIT 1
     `;
 
-    db.query(sqlGetTotalKoinWOW, (err, wowResults) => {
+    const queryParams = [bulan, tahun, bulan, tahun];
+
+    db.query(sqlGetTotalKoinWOW, queryParams, (err, wowResults) => {
         if (err) {
             console.error("Error fetching koin WOW:", err);
             return callback({
@@ -569,6 +580,7 @@ function fetchTotalKoinWOW(callback) {
         });
     });
 }
+
 
 
 exports.getTotalKoinByNIP = (req, res) => {
