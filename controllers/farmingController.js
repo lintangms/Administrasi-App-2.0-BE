@@ -242,7 +242,7 @@ exports.createFarming = (req, res) => {
 
                             const id_koin = insertKoinResults.insertId;
 
-                            // Jika game adalah "WOW", buat logika yang sama untuk koin_wow berdasarkan id_game
+                            // Jika game adalah "WOW", buat logika untuk menambah record di koin_wow
                             if (nama_game === "WOW") {
                                 // Hitung total koin WOW untuk bulan ini dari semua NIP untuk game WOW
                                 const sqlSumMonthlyKoinWow = `
@@ -280,40 +280,13 @@ exports.createFarming = (req, res) => {
                                             // Pastikan input koin dikonversi ke integer untuk operasi matematis
                                             const saldoKoinWowBaru = lastSaldoWow + parseInt(koin);
 
-                                            // Cek apakah sudah ada record koin_wow untuk game WOW bulan ini
-                                            const sqlCheckKoinWow = `
-                                                SELECT id_wow 
-                                                FROM koin_wow 
-                                                WHERE id_game = ? 
-                                                AND MONTH(tanggal) = ? 
-                                                AND YEAR(tanggal) = ? 
-                                                LIMIT 1
+                                            // Insert new koin_wow record (ALWAYS INSERT NEW RECORD, don't update)
+                                            const sqlInsertKoinWow = `
+                                                INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
+                                                VALUES (?, ?, ?, ?, ?)
                                             `;
-                                            db.query(sqlCheckKoinWow, [id_game, currentMonth, currentYear], (err, checkResults) => {
-                                                if (err) return res.status(500).json({ message: 'Gagal memeriksa data koin_wow', error: err });
-
-                                                if (checkResults.length > 0) {
-                                                    // Update existing koin_wow record untuk bulan ini
-                                                    const sqlUpdateKoinWow = `
-                                                        UPDATE koin_wow 
-                                                        SET jumlah = ?, saldo_koin = ?, tanggal = ?
-                                                        WHERE id_game = ? 
-                                                        AND MONTH(tanggal) = ? 
-                                                        AND YEAR(tanggal) = ?
-                                                    `;
-                                                    db.query(sqlUpdateKoinWow, [totalKoinWowBulanIni, saldoKoinWowBaru, currentDate, id_game, currentMonth, currentYear], (err) => {
-                                                        if (err) return res.status(500).json({ message: 'Gagal mengupdate record koin_wow', error: err });
-                                                    });
-                                                } else {
-                                                    // Insert new koin_wow record
-                                                    const sqlInsertKoinWow = `
-                                                        INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
-                                                        VALUES (?, ?, ?, ?, ?)
-                                                    `;
-                                                    db.query(sqlInsertKoinWow, [NIP, id_game, totalKoinWowBulanIni, saldoKoinWowBaru, currentDate], (err) => {
-                                                        if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
-                                                    });
-                                                }
+                                            db.query(sqlInsertKoinWow, [NIP, id_game, totalKoinWowBulanIni, saldoKoinWowBaru, currentDate], (err) => {
+                                                if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
                                             });
                                         });
                                     });

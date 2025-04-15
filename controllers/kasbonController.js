@@ -1,13 +1,38 @@
 const db = require('../config/db');
 
-// Get all records with employee names
+// Get all kasbon records with filtering for month, year, and employee name
 exports.getAllKasbon = (req, res) => {
-    const sql = `
+    const { bulan, tahun, search } = req.query;
+
+    let sql = `
         SELECT k.nama, kb.* 
         FROM kasbon kb
         LEFT JOIN karyawan k ON kb.NIP = k.NIP
     `;
-    db.query(sql, (err, results) => {
+    let params = [];
+    let conditions = [];
+
+    if (bulan) {
+        conditions.push('MONTH(kb.tanggal) = ?');
+        params.push(bulan);
+    }
+
+    if (tahun) {
+        conditions.push('YEAR(kb.tanggal) = ?');
+        params.push(tahun);
+    }
+
+    if (search) {
+        conditions.push('k.nama LIKE ?');
+        const searchPattern = `%${search}%`;
+        params.push(searchPattern);
+    }
+
+    if (conditions.length > 0) {
+        sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    db.query(sql, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
         res.status(200).json({ message: 'Data kasbon berhasil diambil', data: results });
     });
