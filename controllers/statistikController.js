@@ -64,7 +64,7 @@ exports.getStatistik = (req, res) => {
     });
 };
 
-// Statistik Perolehan Farming per NIP dengan filter bulan, tahun, nama_game, dan shift
+// Statistik Perolehan Farming per NIP (1 data terbaru per NIP berdasarkan ID koin terbesar)
 exports.getStatistikFarming = (req, res) => {
     const { bulan, tahun, nama_game, shift } = req.query;
 
@@ -72,32 +72,45 @@ exports.getStatistikFarming = (req, res) => {
     const tahunFilter = tahun || new Date().getFullYear();
 
     const sql = `
-        SELECT k.nip, k.nama, 
-               COALESCE(SUM(ko.saldo_koin), 0) AS total_saldo_koin,
-               COALESCE(SUM(ko.dijual), 0) AS total_dijual
+        SELECT k.nip, k.nama,
+               COALESCE(koin_terbaru.saldo_koin, 0) AS total_saldo_koin,
+               COALESCE(koin_terbaru.dijual, 0) AS total_dijual
         FROM karyawan k
         JOIN jabatan j ON k.id_jabatan = j.id_jabatan
         JOIN shift s ON k.id_shift = s.id_shift
-        LEFT JOIN koin ko 
-            ON k.nip = ko.nip 
-            AND MONTH(ko.tanggal) = ? 
-            AND YEAR(ko.tanggal) = ?
-        LEFT JOIN game g 
-            ON ko.id_game = g.id_game
+        LEFT JOIN (
+            SELECT k1.*
+            FROM koin k1
+            INNER JOIN (
+                SELECT MAX(id_koin) AS id_koin
+                FROM koin
+                WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ?
+                GROUP BY nip
+            ) k2 ON k1.id_koin = k2.id_koin
+        ) koin_terbaru ON k.nip = koin_terbaru.nip
+        LEFT JOIN game g ON koin_terbaru.id_game = g.id_game
         WHERE j.nama_jabatan = 'FARMER'
             AND (? IS NULL OR g.nama_game = ?)
             AND (? IS NULL OR s.nama_shift = ?)
-        GROUP BY k.nip, k.nama
+        GROUP BY k.nip
         ORDER BY k.nip;
     `;
 
-    db.query(sql, [bulanFilter, tahunFilter, nama_game, nama_game, shift, shift], (err, results) => {
-        if (err) return res.status(500).json({ message: "Error fetching farming statistics", error: err });
+    db.query(
+        sql,
+        [bulanFilter, tahunFilter, nama_game, nama_game, shift, shift],
+        (err, results) => {
+            if (err) {
+                return res.status(500).json({
+                    message: "Error fetching farming statistics",
+                    error: err,
+                });
+            }
 
-        res.status(200).json(results);
-    });
+            res.status(200).json(results);
+        }
+    );
 };
-
 
 // Statistik Perolehan Boosting per NIP dengan filter bulan, tahun, nama_game, dan shift
 exports.getStatistikBoosting = (req, res) => {

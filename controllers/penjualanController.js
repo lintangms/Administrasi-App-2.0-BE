@@ -241,8 +241,6 @@ exports.createPenjualan = (req, res) => {
     });
 };
 
-
-
 exports.getAllPenjualan = (req, res) => {
     const { bulan, tahun, nama_game, nama, id_wow } = req.query;
 

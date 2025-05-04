@@ -307,7 +307,6 @@ exports.getFarmingByNip = (req, res) => {
 // };
 
 // Create record
-// Create record
 exports.createFarming = (req, res) => {
     const { NIP, koin, ket, nama_game } = req.body;
     const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
