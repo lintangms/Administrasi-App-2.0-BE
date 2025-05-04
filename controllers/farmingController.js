@@ -306,6 +306,120 @@ exports.getFarmingByNip = (req, res) => {
 //     });
 // };
 
+// // Create record
+// exports.createFarming = (req, res) => {
+//     const { NIP, koin, ket, nama_game } = req.body;
+//     const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+//     const currentMonth = new Date().getMonth() + 1; // Current month (1-12)
+//     const currentYear = new Date().getFullYear(); // Current year
+
+//     // Cari id_game berdasarkan nama_game
+//     const sqlGetGame = 'SELECT id_game FROM game WHERE nama_game = ?';
+//     db.query(sqlGetGame, [nama_game], (err, results) => {
+//         if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+//         if (results.length === 0) return res.status(404).json({ message: 'Game tidak ditemukan' });
+
+//         const id_game = results[0].id_game;
+
+//         // Insert data ke tabel perolehan_farming
+//         const sqlInsert = 'INSERT INTO perolehan_farming (NIP, koin, ket, id_game) VALUES (?, ?, ?, ?)';
+//         db.query(sqlInsert, [NIP, koin, ket, id_game], (err, insertResults) => {
+//             if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+
+//             // Insert langsung ke tabel koin dengan jumlah dan saldo_koin = koin dari input
+//             const sqlInsertKoin = `
+//                 INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
+//                 VALUES (?, ?, ?, ?, ?)
+//             `;
+//             db.query(sqlInsertKoin, [NIP, id_game, koin, koin, currentDate], (err, insertKoinResults) => {
+//                 if (err) return res.status(500).json({ message: 'Gagal menambahkan record koin baru', error: err });
+
+//                 const id_koin = insertKoinResults.insertId;
+
+//                 // Jika game adalah "WOW", insert juga ke koin_wow
+//                 if (nama_game === "WOW") {
+//                     const sqlInsertKoinWow = `
+//                         INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
+//                         VALUES (?, ?, ?, ?, ?)
+//                     `;
+//                     db.query(sqlInsertKoinWow, [NIP, id_game, koin, koin, currentDate], (err) => {
+//                         if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
+//                     });
+//                 }
+
+//                 // Ambil target di bulan dan tahun yang sama
+//                 const sqlGetTargetByMonth = `
+//                     SELECT id_target, target 
+//                     FROM target 
+//                     WHERE NIP = ? 
+//                     AND MONTH(tanggal) = ? 
+//                     AND YEAR(tanggal) = ?
+//                     ORDER BY tanggal DESC 
+//                     LIMIT 1
+//                 `;
+//                 db.query(sqlGetTargetByMonth, [NIP, currentMonth, currentYear], (err, targetMonthResults) => {
+//                     if (err) {
+//                         return res.status(500).json({ message: 'Gagal mengambil target bulan ini', error: err });
+//                     }
+
+//                     if (targetMonthResults.length > 0) {
+//                         const id_target = targetMonthResults[0].id_target;
+//                         const target = targetMonthResults[0].target;
+//                         const persentase = target > 0 ? (parseInt(koin) / target) * 100 : 0;
+
+//                         // Update id_koin dan persentase di tabel target
+//                         const sqlUpdateTargetMonth = `
+//                             UPDATE target 
+//                             SET id_koin = ?, persentase = ? 
+//                             WHERE id_target = ?
+//                         `;
+//                         db.query(sqlUpdateTargetMonth, [id_koin, persentase, id_target], (err) => {
+//                             if (err) {
+//                                 return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
+//                             }
+
+//                             res.status(201).json({
+//                                 message: 'Data farming berhasil ditambahkan, koin dicatat sesuai input, dan target diperbarui',
+//                                 data: {
+//                                     id_farming: insertResults.insertId,
+//                                     NIP,
+//                                     saldo_koin: parseInt(koin),
+//                                     ket,
+//                                     id_game,
+//                                     nama_game,
+//                                     tanggal: currentDate,
+//                                     id_koin,
+//                                     target,
+//                                     persentase,
+//                                     bulan: currentMonth,
+//                                     tahun: currentYear
+//                                 }
+//                             });
+//                         });
+//                     } else {
+//                         res.status(201).json({
+//                             message: 'Data farming berhasil ditambahkan dan koin dicatat sesuai input. Tidak ada target bulan ini.',
+//                             data: {
+//                                 id_farming: insertResults.insertId,
+//                                 NIP,
+//                                 saldo_koin: parseInt(koin),
+//                                 ket,
+//                                 id_game,
+//                                 nama_game,
+//                                 tanggal: currentDate,
+//                                 id_koin,
+//                                 bulan: currentMonth,
+//                                 tahun: currentYear
+//                             }
+//                         });
+//                     }
+//                 });
+//             });
+//         });
+//     });
+// };
+
+
 // Create record
 exports.createFarming = (req, res) => {
     const { NIP, koin, ket, nama_game } = req.body;
@@ -321,98 +435,118 @@ exports.createFarming = (req, res) => {
 
         const id_game = results[0].id_game;
 
-        // Insert data ke tabel perolehan_farming
-        const sqlInsert = 'INSERT INTO perolehan_farming (NIP, koin, ket, id_game) VALUES (?, ?, ?, ?)';
-        db.query(sqlInsert, [NIP, koin, ket, id_game], (err, insertResults) => {
-            if (err) return res.status(500).json({ message: 'Error pada server', error: err });
+        // Cek apakah ada data dijual di bulan & tahun ini
+        const sqlGetDijual = `
+            SELECT SUM(dijual) AS total_dijual 
+            FROM koin 
+            WHERE NIP = ? 
+              AND id_game = ? 
+              AND MONTH(tanggal) = ? 
+              AND YEAR(tanggal) = ?
+        `;
+        db.query(sqlGetDijual, [NIP, id_game, currentMonth, currentYear], (err, dijualResults) => {
+            if (err) return res.status(500).json({ message: 'Gagal mengambil data dijual', error: err });
 
-            // Insert langsung ke tabel koin dengan jumlah dan saldo_koin = koin dari input
-            const sqlInsertKoin = `
-                INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
-                VALUES (?, ?, ?, ?, ?)
-            `;
-            db.query(sqlInsertKoin, [NIP, id_game, koin, koin, currentDate], (err, insertKoinResults) => {
-                if (err) return res.status(500).json({ message: 'Gagal menambahkan record koin baru', error: err });
+            const totalDijual = dijualResults[0].total_dijual || 0;
+            const saldoKoin = parseInt(koin);
+            const jumlah = saldoKoin + totalDijual;
 
-                const id_koin = insertKoinResults.insertId;
+            // Insert ke tabel perolehan_farming
+            const sqlInsertFarming = 'INSERT INTO perolehan_farming (NIP, koin, ket, id_game) VALUES (?, ?, ?, ?)';
+            db.query(sqlInsertFarming, [NIP, koin, ket, id_game], (err, insertResults) => {
+                if (err) return res.status(500).json({ message: 'Error saat insert ke perolehan_farming', error: err });
 
-                // Jika game adalah "WOW", insert juga ke koin_wow
-                if (nama_game === "WOW") {
-                    const sqlInsertKoinWow = `
-                        INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
-                        VALUES (?, ?, ?, ?, ?)
-                    `;
-                    db.query(sqlInsertKoinWow, [NIP, id_game, koin, koin, currentDate], (err) => {
-                        if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
-                    });
-                }
-
-                // Ambil target di bulan dan tahun yang sama
-                const sqlGetTargetByMonth = `
-                    SELECT id_target, target 
-                    FROM target 
-                    WHERE NIP = ? 
-                    AND MONTH(tanggal) = ? 
-                    AND YEAR(tanggal) = ?
-                    ORDER BY tanggal DESC 
-                    LIMIT 1
+                // Insert ke tabel koin
+                const sqlInsertKoin = `
+                    INSERT INTO koin (NIP, id_game, jumlah, saldo_koin, tanggal)
+                    VALUES (?, ?, ?, ?, ?)
                 `;
-                db.query(sqlGetTargetByMonth, [NIP, currentMonth, currentYear], (err, targetMonthResults) => {
-                    if (err) {
-                        return res.status(500).json({ message: 'Gagal mengambil target bulan ini', error: err });
+                db.query(sqlInsertKoin, [NIP, id_game, jumlah, saldoKoin, currentDate], (err, insertKoinResults) => {
+                    if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke tabel koin', error: err });
+
+                    const id_koin = insertKoinResults.insertId;
+
+                    // Jika nama_game = WOW, insert juga ke koin_wow
+                    if (nama_game === "WOW") {
+                        const sqlInsertKoinWow = `
+                            INSERT INTO koin_wow (NIP, id_game, jumlah, saldo_koin, tanggal)
+                            VALUES (?, ?, ?, ?, ?)
+                        `;
+                        db.query(sqlInsertKoinWow, [NIP, id_game, jumlah, saldoKoin, currentDate], (err) => {
+                            if (err) return res.status(500).json({ message: 'Gagal menambahkan record ke koin_wow', error: err });
+                        });
                     }
 
-                    if (targetMonthResults.length > 0) {
-                        const id_target = targetMonthResults[0].id_target;
-                        const target = targetMonthResults[0].target;
-                        const persentase = target > 0 ? (parseInt(koin) / target) * 100 : 0;
+                    // Cek target bulan ini
+                    const sqlGetTargetByMonth = `
+                        SELECT id_target, target 
+                        FROM target 
+                        WHERE NIP = ? 
+                        AND MONTH(tanggal) = ? 
+                        AND YEAR(tanggal) = ?
+                        ORDER BY tanggal DESC 
+                        LIMIT 1
+                    `;
+                    db.query(sqlGetTargetByMonth, [NIP, currentMonth, currentYear], (err, targetMonthResults) => {
+                        if (err) {
+                            return res.status(500).json({ message: 'Gagal mengambil target bulan ini', error: err });
+                        }
 
-                        // Update id_koin dan persentase di tabel target
-                        const sqlUpdateTargetMonth = `
-                            UPDATE target 
-                            SET id_koin = ?, persentase = ? 
-                            WHERE id_target = ?
-                        `;
-                        db.query(sqlUpdateTargetMonth, [id_koin, persentase, id_target], (err) => {
-                            if (err) {
-                                return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
-                            }
+                        if (targetMonthResults.length > 0) {
+                            const id_target = targetMonthResults[0].id_target;
+                            const target = targetMonthResults[0].target;
+                            const persentase = target > 0 ? (saldoKoin / target) * 100 : 0;
 
+                            const sqlUpdateTargetMonth = `
+                                UPDATE target 
+                                SET id_koin = ?, persentase = ? 
+                                WHERE id_target = ?
+                            `;
+                            db.query(sqlUpdateTargetMonth, [id_koin, persentase, id_target], (err) => {
+                                if (err) {
+                                    return res.status(500).json({ message: 'Gagal mengupdate data di tabel target', error: err });
+                                }
+
+                                res.status(201).json({
+                                    message: 'Data farming berhasil ditambahkan, koin dicatat, dan target diperbarui',
+                                    data: {
+                                        id_farming: insertResults.insertId,
+                                        NIP,
+                                        saldo_koin: saldoKoin,
+                                        dijual: totalDijual,
+                                        jumlah,
+                                        ket,
+                                        id_game,
+                                        nama_game,
+                                        tanggal: currentDate,
+                                        id_koin,
+                                        target,
+                                        persentase,
+                                        bulan: currentMonth,
+                                        tahun: currentYear
+                                    }
+                                });
+                            });
+                        } else {
                             res.status(201).json({
-                                message: 'Data farming berhasil ditambahkan, koin dicatat sesuai input, dan target diperbarui',
+                                message: 'Data farming berhasil ditambahkan dan koin dicatat. Tidak ada target bulan ini.',
                                 data: {
                                     id_farming: insertResults.insertId,
                                     NIP,
-                                    saldo_koin: parseInt(koin),
+                                    saldo_koin: saldoKoin,
+                                    dijual: totalDijual,
+                                    jumlah,
                                     ket,
                                     id_game,
                                     nama_game,
                                     tanggal: currentDate,
                                     id_koin,
-                                    target,
-                                    persentase,
                                     bulan: currentMonth,
                                     tahun: currentYear
                                 }
                             });
-                        });
-                    } else {
-                        res.status(201).json({
-                            message: 'Data farming berhasil ditambahkan dan koin dicatat sesuai input. Tidak ada target bulan ini.',
-                            data: {
-                                id_farming: insertResults.insertId,
-                                NIP,
-                                saldo_koin: parseInt(koin),
-                                ket,
-                                id_game,
-                                nama_game,
-                                tanggal: currentDate,
-                                id_koin,
-                                bulan: currentMonth,
-                                tahun: currentYear
-                            }
-                        });
-                    }
+                        }
+                    });
                 });
             });
         });

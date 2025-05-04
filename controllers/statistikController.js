@@ -72,9 +72,11 @@ exports.getStatistikFarming = (req, res) => {
     const tahunFilter = tahun || new Date().getFullYear();
 
     const sql = `
-        SELECT k.nip, k.nama,
-               COALESCE(koin_terbaru.saldo_koin, 0) AS total_saldo_koin,
-               COALESCE(koin_terbaru.dijual, 0) AS total_dijual
+        SELECT 
+            k.nip, 
+            k.nama,
+            COALESCE(kt.saldo_koin, 0) AS total_saldo_koin,
+            COALESCE(kt.dijual, 0) AS total_dijual
         FROM karyawan k
         JOIN jabatan j ON k.id_jabatan = j.id_jabatan
         JOIN shift s ON k.id_shift = s.id_shift
@@ -87,12 +89,11 @@ exports.getStatistikFarming = (req, res) => {
                 WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ?
                 GROUP BY nip
             ) k2 ON k1.id_koin = k2.id_koin
-        ) koin_terbaru ON k.nip = koin_terbaru.nip
-        LEFT JOIN game g ON koin_terbaru.id_game = g.id_game
+        ) kt ON k.nip = kt.nip
+        LEFT JOIN game g ON kt.id_game = g.id_game
         WHERE j.nama_jabatan = 'FARMER'
             AND (? IS NULL OR g.nama_game = ?)
             AND (? IS NULL OR s.nama_shift = ?)
-        GROUP BY k.nip
         ORDER BY k.nip;
     `;
 
@@ -111,6 +112,7 @@ exports.getStatistikFarming = (req, res) => {
         }
     );
 };
+
 
 // Statistik Perolehan Boosting per NIP dengan filter bulan, tahun, nama_game, dan shift
 exports.getStatistikBoosting = (req, res) => {
