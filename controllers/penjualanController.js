@@ -167,28 +167,23 @@ exports.createPenjualan = (req, res) => {
 
     const isWOW = id_wow !== undefined && id_wow !== null;
     const sqlGetKoin = isWOW 
-        ? 'SELECT jumlah, saldo_koin, dijual, id_game FROM koin_wow WHERE id_wow = ?' 
-        : 'SELECT jumlah, dijual, saldo_koin, id_game FROM koin WHERE id_koin = ? AND NIP = ?';
-    
+        ? 'SELECT jumlah, dijual, id_game FROM koin_wow WHERE id_wow = ?' 
+        : 'SELECT jumlah, dijual, id_game FROM koin WHERE id_koin = ? AND NIP = ?';
+
     const params = isWOW ? [id_wow] : [id_koin, NIP];
 
     db.query(sqlGetKoin, params, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error fetching koin data', error: err });
         if (results.length === 0) return res.status(404).json({ message: 'Koin tidak ditemukan' });
 
-        let jumlah, saldo_koin, dijual, id_game = null, newDijual, newSisa, newSaldoKoin;
+        let jumlah, dijual, id_game = null, newDijual, newJumlah;
         
         jumlah = results[0].jumlah;
-        saldo_koin = results[0].saldo_koin;
         dijual = results[0].dijual || 0;
         id_game = results[0].id_game;
 
         newDijual = dijual + koin_dijual;
-        newSisa = jumlah - newDijual;
-        newSaldoKoin = saldo_koin - koin_dijual;
-
-        if (newSisa < 0) return res.status(400).json({ message: 'Jumlah koin tidak mencukupi untuk dijual' });
-        if (newSaldoKoin < 0) return res.status(400).json({ message: 'Saldo koin tidak mencukupi' });
+        newJumlah = jumlah + koin_dijual;
 
         db.beginTransaction(err => {
             if (err) return res.status(500).json({ message: 'Error initiating transaction', error: err });
@@ -196,7 +191,7 @@ exports.createPenjualan = (req, res) => {
             const sqlInsertPenjualan = isWOW
                 ? 'INSERT INTO penjualan (tgl_transaksi, id_wow, server, demand, id_game, rate, ket, jumlah_uang, koin_dijual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 : 'INSERT INTO penjualan (tgl_transaksi, NIP, server, demand, id_koin, id_game, rate, ket, jumlah_uang, koin_dijual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
-            
+
             const insertParams = isWOW
                 ? [tgl_transaksi, id_wow, server, demand, id_game, rate, ket, jumlah_uang, koin_dijual]
                 : [tgl_transaksi, NIP, server, demand, id_koin, id_game, rate, ket, jumlah_uang, koin_dijual];
@@ -205,13 +200,13 @@ exports.createPenjualan = (req, res) => {
                 if (err) return db.rollback(() => res.status(500).json({ message: 'Error inserting into penjualan', error: err }));
 
                 const sqlUpdateKoin = isWOW
-                    ? 'UPDATE koin_wow SET dijual = ?, saldo_koin = ? WHERE id_wow = ?'
-                    : 'UPDATE koin SET dijual = ?, sisa = ?, saldo_koin = ? WHERE id_koin = ? AND NIP = ?';
-                
+                    ? 'UPDATE koin_wow SET dijual = ?, jumlah = ? WHERE id_wow = ?'
+                    : 'UPDATE koin SET dijual = ?, jumlah = ? WHERE id_koin = ? AND NIP = ?';
+
                 const updateParams = isWOW
-                    ? [newDijual, newSaldoKoin, id_wow]
-                    : [newDijual, newSisa, newSaldoKoin, id_koin, NIP];
-                
+                    ? [newDijual, newJumlah, id_wow]
+                    : [newDijual, newJumlah, id_koin, NIP];
+
                 db.query(sqlUpdateKoin, updateParams, (err) => {
                     if (err) return db.rollback(() => res.status(500).json({ message: 'Error updating koin', error: err }));
 
@@ -230,7 +225,7 @@ exports.createPenjualan = (req, res) => {
                                 rate,
                                 ket,
                                 koin_dijual,
-                                saldo_koin: newSaldoKoin,
+                                jumlah_koin_baru: newJumlah,
                                 jumlah_uang
                             }
                         });
@@ -240,6 +235,7 @@ exports.createPenjualan = (req, res) => {
         });
     });
 };
+
 
 exports.getAllPenjualan = (req, res) => {
     const { bulan, tahun, nama_game, nama, id_wow } = req.query;
@@ -266,7 +262,7 @@ exports.getAllPenjualan = (req, res) => {
             p.koin_dijual, 
             p.id_rate, 
             p.jumlah_uang, 
-            p.id_wow,
+            p.id_wow,   
             CASE 
                 WHEN p.id_wow IS NOT NULL THEN 'WOW' 
                 ELSE g.nama_game 
