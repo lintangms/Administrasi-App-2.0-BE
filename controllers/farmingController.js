@@ -643,6 +643,13 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
                   AND MONTH(k2.tanggal) = ? 
                   AND YEAR(k2.tanggal) = ?
             ) AS total_dijual,
+            (
+                SELECT ROUND(AVG(p.rate), 2)
+                FROM penjualan p
+                WHERE p.NIP = k.NIP 
+                  AND MONTH(p.tgl_transaksi) = ? 
+                  AND YEAR(p.tgl_transaksi) = ?
+            ) AS rata_rata_rate,
             g.nama_game
         FROM koin k
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
@@ -657,7 +664,11 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
         AND YEAR(pf.periode) = ?
     `;
 
-    const queryParams = [bulan, tahun, bulan, tahun];
+    const queryParams = [
+        bulan, tahun,             // total_dijual
+        bulan, tahun,             // rata_rata_rate
+        bulan, tahun              // periode
+    ];
 
     if (namaGame) {
         sql += " AND g.nama_game = ?";
@@ -669,15 +680,27 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
     db.query(sql, queryParams, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error fetching total koin', error: err });
 
+        // Hitung estimasi_gaji manual
+        const fixedResults = results.map(item => {
+            const total_dijual = parseFloat(item.total_dijual) || 0;
+            const rata_rata_rate = parseFloat(item.rata_rata_rate) || 0;
+            const estimasi_gaji = Math.round(total_dijual * rata_rata_rate);
+
+            return {
+                ...item,
+                estimasi_gaji
+            };
+        });
+
         if (namaGame && namaGame.toUpperCase() !== "WOW") {
             return res.status(200).json({
                 message: `Data total koin untuk ${namaGame} pada periode ${bulan}-${tahun} berhasil diambil`,
-                data: results
+                data: fixedResults
             });
         }
 
         fetchTotalKoinWOW(bulan, tahun, (wowData) => {
-            const filteredResults = results.filter(item => item.nama_game !== "WOW");
+            const filteredResults = fixedResults.filter(item => item.nama_game !== "WOW");
 
             res.status(200).json({
                 message: `Data total koin terakhir per NIP untuk periode ${bulan}-${tahun} berhasil diambil`,
@@ -699,14 +722,24 @@ function fetchTotalKoinWOW(bulan, tahun, callback) {
                 WHERE kw2.dijual IS NOT NULL 
                   AND MONTH(kw2.tanggal) = ? 
                   AND YEAR(kw2.tanggal) = ?
-            ) AS total_dijual
+            ) AS total_dijual,
+            (
+                SELECT ROUND(AVG(p.rate), 2)
+                FROM penjualan p
+                WHERE MONTH(p.tgl_transaksi) = ? 
+                  AND YEAR(p.tgl_transaksi) = ?
+            ) AS rata_rata_rate
         FROM koin_wow 
         WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ?
         ORDER BY id_wow DESC 
         LIMIT 1
     `;
 
-    const queryParams = [bulan, tahun, bulan, tahun];
+    const queryParams = [
+        bulan, tahun,       // total_dijual
+        bulan, tahun,       // rata_rata_rate
+        bulan, tahun        // WHERE utama
+    ];
 
     db.query(sqlGetTotalKoinWOW, queryParams, (err, wowResults) => {
         if (err) {
@@ -717,23 +750,36 @@ function fetchTotalKoinWOW(bulan, tahun, callback) {
                 id_wow: null,
                 total_koin: 0,
                 saldo_koin: 0,
-                total_dijual: ''
+                total_dijual: '',
+                rata_rata_rate: '',
+                estimasi_gaji: ''
             });
         }
 
-        const totalKoinWOW = wowResults.length > 0 ? wowResults[0] : { id_wow: null, total_koin: 0, saldo_koin: 0, total_dijual: '' };
+        const totalKoinWOW = wowResults.length > 0 ? wowResults[0] : {
+            id_wow: null,
+            total_koin: 0,
+            saldo_koin: 0,
+            total_dijual: 0,
+            rata_rata_rate: 0
+        };
+
+        const total_dijual = parseFloat(totalKoinWOW.total_dijual) || 0;
+        const rata_rata_rate = parseFloat(totalKoinWOW.rata_rata_rate) || 0;
+        const estimasi_gaji = Math.round(total_dijual * rata_rata_rate);
 
         callback({
             nama_game: "WOW",
             nama: "AKUN UTAMA WOW",
             id_wow: totalKoinWOW.id_wow,
-            total_koin: totalKoinWOW.total_koin, 
+            total_koin: totalKoinWOW.total_koin,
             saldo_koin: totalKoinWOW.saldo_koin,
-            total_dijual: totalKoinWOW.total_dijual
+            total_dijual,
+            rata_rata_rate,
+            estimasi_gaji
         });
     });
 }
-
 
 
 
