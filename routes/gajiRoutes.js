@@ -14,5 +14,6 @@ router.post('/addgaji', gajiController.addGajiLama);
 router.get('/getrate', gajiController.getAllRates);
 router.get('/koindetail', gajiController.getKoinDetails);
 router.get('/estimasi/:nip', gajiController.getEstimasiGajiByNIP);
+router.get('/estimasigaji', gajiController.getAllEstimasiGaji)
 
 module.exports = router;
