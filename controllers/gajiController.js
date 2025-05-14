@@ -698,3 +698,68 @@ exports.getAllRates = (req, res) => {
         });
     });
 };
+
+exports.getEstimasiGajiByNIP = (req, res) => {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const bulan = req.query.bulan ? parseInt(req.query.bulan) : currentMonth;
+    const tahun = req.query.tahun ? parseInt(req.query.tahun) : currentYear;
+    const nip = req.params.nip;
+
+    const sql = `
+        SELECT 
+            (
+                SELECT SUM(k.dijual)
+                FROM koin k
+                WHERE k.NIP = ? 
+                  AND k.dijual IS NOT NULL 
+                  AND MONTH(k.tanggal) = ? 
+                  AND YEAR(k.tanggal) = ?
+            ) AS total_dijual,
+            (
+                SELECT ROUND(AVG(p.rate), 2)
+                FROM penjualan p
+                WHERE p.NIP = ?
+                  AND MONTH(p.tgl_transaksi) = ?
+                  AND YEAR(p.tgl_transaksi) = ?
+            ) AS rata_rata_rate
+    `;
+
+    const queryParams = [
+        nip, bulan, tahun,  // total_dijual
+        nip, bulan, tahun   // rata_rata_rate
+    ];
+
+    db.query(sql, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({
+                message: 'Gagal mengambil estimasi gaji',
+                error: err
+            });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({
+                message: 'Data tidak ditemukan untuk NIP tersebut'
+            });
+        }
+
+        const total_dijual = parseFloat(results[0].total_dijual) || 0;
+        const original_rate = parseFloat(results[0].rata_rata_rate) || 0;
+        const rate_dikurangi = original_rate - 5;
+
+        const estimasi_gaji = Math.round(total_dijual * rate_dikurangi * 0.5);
+
+        return res.status(200).json({
+            nip,
+            bulan,
+            tahun,
+            total_dijual,
+            rata_rata_rate: original_rate,
+            rate_dikurangi,
+            estimasi_gaji
+        });
+    });
+};

@@ -680,14 +680,19 @@ function fetchTotalKoin(res, bulan, tahun, namaGame) {
     db.query(sql, queryParams, (err, results) => {
         if (err) return res.status(500).json({ message: 'Error fetching total koin', error: err });
 
-        // Hitung estimasi_gaji manual
         const fixedResults = results.map(item => {
             const total_dijual = parseFloat(item.total_dijual) || 0;
-            const rata_rata_rate = parseFloat(item.rata_rata_rate) || 0;
-            const estimasi_gaji = Math.round(total_dijual * rata_rata_rate);
+            let rata_rata_rate = parseFloat(item.rata_rata_rate) || 0;
+
+            // Kurangi rata-rata rate sebesar 5
+            rata_rata_rate = Math.max(rata_rata_rate - 5, 0);
+
+            // Hitung estimasi_gaji: 50% dari total_dijual x (rate - 5)
+            const estimasi_gaji = Math.round((total_dijual * rata_rata_rate) * 0.5);
 
             return {
                 ...item,
+                rata_rata_rate, // nilai yang sudah dikurangi 5
                 estimasi_gaji
             };
         });
@@ -765,8 +770,11 @@ function fetchTotalKoinWOW(bulan, tahun, callback) {
         };
 
         const total_dijual = parseFloat(totalKoinWOW.total_dijual) || 0;
-        const rata_rata_rate = parseFloat(totalKoinWOW.rata_rata_rate) || 0;
-        const estimasi_gaji = Math.round(total_dijual * rata_rata_rate);
+        let rata_rata_rate = parseFloat(totalKoinWOW.rata_rata_rate) || 0;
+
+        // Kurangi rate 5 dan validasi agar tidak negatif
+        rata_rata_rate = Math.max(rata_rata_rate - 5, 0);
+        const estimasi_gaji = Math.round((total_dijual * rata_rata_rate) * 0.5);
 
         callback({
             nama_game: "WOW",

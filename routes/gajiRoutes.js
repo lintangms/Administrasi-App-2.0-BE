@@ -13,5 +13,6 @@ router.post('/gajiunsold', gajiController.updateUnsoldGaji);
 router.post('/addgaji', gajiController.addGajiLama);
 router.get('/getrate', gajiController.getAllRates);
 router.get('/koindetail', gajiController.getKoinDetails);
+router.get('/estimasi/:nip', gajiController.getEstimasiGajiByNIP);
 
 module.exports = router;
