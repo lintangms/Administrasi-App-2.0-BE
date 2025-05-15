@@ -708,36 +708,40 @@ exports.getAllEstimasiGaji = (req, res) => {
     const tahun = req.query.tahun ? parseInt(req.query.tahun) : currentYear;
     const namaGame = req.query.nama_game || null;
 
-    // Buat batasan tanggal (bulan dan tahun sebelumnya)
-    const periodeFilter = new Date(tahun, bulan - 1, 1); // bulan -1 karena 0-indexed
-
     let sql = `
         SELECT 
             k.NIP, 
             ky.nama, 
-            COALESCE(SUM(k.jumlah), 0) AS total_koin, 
+            COALESCE(k.jumlah, 0) AS total_koin, 
             (
                 SELECT ROUND(AVG(p.rate), 2)
                 FROM penjualan p
                 WHERE p.NIP = k.NIP 
-                  AND p.tgl_transaksi < ?
+                  AND MONTH(p.tgl_transaksi) = ? 
+                  AND YEAR(p.tgl_transaksi) = ?
             ) AS rata_rata_rate,
             g.nama_game
         FROM koin k
+        INNER JOIN (
+            SELECT NIP, MAX(id_koin) AS max_id
+            FROM koin
+            GROUP BY NIP
+        ) latest_koin ON k.NIP = latest_koin.NIP AND k.id_koin = latest_koin.max_id
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
         INNER JOIN perolehan_farming pf ON pf.NIP = k.NIP
         INNER JOIN game g ON pf.id_game = g.id_game
-        WHERE pf.periode < ?
+        WHERE MONTH(pf.periode) = ? 
+        AND YEAR(pf.periode) = ?
     `;
 
-    const queryParams = [periodeFilter, periodeFilter];
+    const queryParams = [bulan, tahun, bulan, tahun];
 
     if (namaGame) {
         sql += " AND g.nama_game = ?";
         queryParams.push(namaGame);
     }
 
-    sql += " GROUP BY k.NIP, g.nama_game ORDER BY k.NIP ASC";
+    sql += " GROUP BY k.NIP, ky.nama, k.jumlah, g.nama_game ORDER BY k.NIP ASC";
 
     db.query(sql, queryParams, (err, results) => {
         if (err) {
@@ -767,7 +771,7 @@ exports.getAllEstimasiGaji = (req, res) => {
         });
 
         res.status(200).json({
-            message: `Data estimasi gaji berdasarkan akumulasi sebelum ${bulan}-${tahun} berhasil diambil`,
+            message: `Estimasi gaji berdasarkan data bulan ${bulan}-${tahun} berhasil diambil`,
             data: fixedResults
         });
     });
