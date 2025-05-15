@@ -710,9 +710,9 @@ exports.getAllEstimasiGaji = (req, res) => {
 
     let sql = `
         SELECT 
-            k.NIP, 
-            ky.nama, 
-            COALESCE(k.jumlah, 0) AS total_koin, 
+            k.NIP,
+            ky.nama,
+            k.jumlah AS total_koin,
             (
                 SELECT ROUND(AVG(p.rate), 2)
                 FROM penjualan p
@@ -725,16 +725,16 @@ exports.getAllEstimasiGaji = (req, res) => {
         INNER JOIN (
             SELECT NIP, MAX(id_koin) AS max_id
             FROM koin
+            WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ?
             GROUP BY NIP
         ) latest_koin ON k.NIP = latest_koin.NIP AND k.id_koin = latest_koin.max_id
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
         INNER JOIN perolehan_farming pf ON pf.NIP = k.NIP
         INNER JOIN game g ON pf.id_game = g.id_game
-        WHERE MONTH(pf.periode) = ? 
-        AND YEAR(pf.periode) = ?
+        WHERE MONTH(pf.periode) = ? AND YEAR(pf.periode) = ?
     `;
 
-    const queryParams = [bulan, tahun, bulan, tahun];
+    const queryParams = [bulan, tahun, bulan, tahun, bulan, tahun];
 
     if (namaGame) {
         sql += " AND g.nama_game = ?";
@@ -771,7 +771,7 @@ exports.getAllEstimasiGaji = (req, res) => {
         });
 
         res.status(200).json({
-            message: `Estimasi gaji berdasarkan data bulan ${bulan}-${tahun} berhasil diambil`,
+            message: `Estimasi gaji bulan ${bulan}-${tahun} berhasil diambil`,
             data: fixedResults
         });
     });
