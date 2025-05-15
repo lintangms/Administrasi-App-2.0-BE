@@ -786,54 +786,88 @@ exports.getEstimasiGajiByNIP = (req, res) => {
     const bulan = req.query.bulan ? parseInt(req.query.bulan) : currentMonth;
     const tahun = req.query.tahun ? parseInt(req.query.tahun) : currentYear;
     const nip = req.params.nip;
+    const namaGame = req.query.nama_game || null;
 
-    const sql = `
+    if (!nip) {
+        return res.status(400).json({ message: 'Parameter NIP wajib diisi' });
+    }
+
+    let sql = `
         SELECT 
-            COALESCE(k.jumlah, 0) AS total_koin, 
+            ky.NIP,
+            ky.nama,
+            COALESCE(k.jumlah, 0) AS total_koin,
             (
-                SELECT ROUND(AVG(p.rate), 2)
-                FROM penjualan p
-                WHERE p.NIP = ? 
-                  AND MONTH(p.tgl_transaksi) = ? 
-                  AND YEAR(p.tgl_transaksi) = ?
-            ) AS rata_rata_rate
-        FROM koin k
-        INNER JOIN (
-            SELECT NIP, MAX(id_koin) AS max_id
-            FROM koin
-            GROUP BY NIP
-        ) latest ON k.NIP = latest.NIP AND k.id_koin = latest.max_id
-        WHERE k.NIP = ?
+                SELECT ROUND(AVG(rate), 2)
+                FROM penjualan
+                WHERE MONTH(tgl_transaksi) = ? 
+                  AND YEAR(tgl_transaksi) = ?
+            ) AS rata_rata_rate,
+            g.nama_game
+        FROM karyawan ky
+        LEFT JOIN (
+            SELECT k1.*
+            FROM koin k1
+            INNER JOIN (
+                SELECT MAX(id_koin) AS max_id
+                FROM koin
+                WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND NIP = ?
+            ) last_koin ON k1.id_koin = last_koin.max_id
+        ) k ON ky.NIP = k.NIP
+        INNER JOIN perolehan_farming pf ON pf.NIP = ky.NIP
+        INNER JOIN game g ON pf.id_game = g.id_game
+        WHERE ky.NIP = ?
+          AND MONTH(pf.periode) = ?
+          AND YEAR(pf.periode) = ?
     `;
 
-    const queryParams = [nip, bulan, tahun, nip];
+    const queryParams = [
+        bulan, tahun,          // AVG rate seluruh penjualan
+        bulan, tahun, nip,     // ambil jumlah terakhir dari koin
+        nip, bulan, tahun      // filter utama
+    ];
+
+    if (namaGame) {
+        sql += " AND g.nama_game = ?";
+        queryParams.push(namaGame);
+    }
+
+    sql += " GROUP BY ky.NIP, ky.nama, k.jumlah, g.nama_game";
 
     db.query(sql, queryParams, (err, results) => {
         if (err) {
-            return res.status(500).json({ message: 'Gagal mengambil estimasi gaji NIP', error: err });
+            return res.status(500).json({ message: 'Gagal mengambil estimasi gaji', error: err });
         }
 
         if (results.length === 0) {
-            return res.status(404).json({ message: 'Data tidak ditemukan untuk NIP tersebut' });
+            return res.status(404).json({ message: `Tidak ada data estimasi gaji untuk NIP ${nip} di periode ${bulan}-${tahun}` });
         }
 
-        const total_koin = parseFloat(results[0].total_koin) || 0;
-        const original_rate = parseFloat(results[0].rata_rata_rate) || 0;
-        const rate_dikurangi = original_rate - 5;
-        let estimasi_gaji = Math.round(total_koin * rate_dikurangi * 0.5);
+        const fixedResults = results.map(item => {
+            const total_koin = parseFloat(item.total_koin) || 0;
+            const original_rate = parseFloat(item.rata_rata_rate) || 0;
+            const rate_dikurangi = original_rate - 5;
 
-        if (isNaN(estimasi_gaji) || estimasi_gaji < 0) {
-            estimasi_gaji = 0;
-        }
+            let estimasi_gaji = Math.round(total_koin * rate_dikurangi * 0.5);
 
-        return res.status(200).json({
-            nip,
-            bulan,
-            tahun,
-            total_koin,
-            rata_rata_rate: original_rate,
-            rate_dikurangi,
-            estimasi_gaji
+            if (isNaN(estimasi_gaji) || estimasi_gaji < 0) {
+                estimasi_gaji = 0;
+            }
+
+            return {
+                NIP: item.NIP,
+                nama: item.nama,
+                nama_game: item.nama_game,
+                total_koin,
+                rata_rata_rate: original_rate,
+                rate_dikurangi,
+                estimasi_gaji
+            };
+        });
+
+        res.status(200).json({
+            message: `Estimasi gaji NIP ${nip} bulan ${bulan}-${tahun} berhasil diambil`,
+            data: fixedResults
         });
     });
 };
