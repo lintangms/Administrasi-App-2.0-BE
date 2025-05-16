@@ -719,6 +719,7 @@ exports.getAllEstimasiGaji = (req, res) => {
                 WHERE p.NIP = k.NIP 
                   AND MONTH(p.tgl_transaksi) = ? 
                   AND YEAR(p.tgl_transaksi) = ?
+                  AND p.id_game = pf.id_game
             ) AS rata_rata_rate,
             g.nama_game
         FROM koin k
@@ -741,7 +742,7 @@ exports.getAllEstimasiGaji = (req, res) => {
         queryParams.push(namaGame);
     }
 
-    sql += " GROUP BY k.NIP, ky.nama, k.jumlah, g.nama_game ORDER BY k.NIP ASC";
+    sql += " GROUP BY k.NIP, ky.nama, k.jumlah, g.nama_game, pf.id_game ORDER BY k.NIP ASC";
 
     db.query(sql, queryParams, (err, results) => {
         if (err) {
@@ -798,10 +799,12 @@ exports.getEstimasiGajiByNIP = (req, res) => {
             ky.nama,
             COALESCE(k.jumlah, 0) AS total_koin,
             (
-                SELECT ROUND(AVG(rate), 2)
-                FROM penjualan
-                WHERE MONTH(tgl_transaksi) = ? 
-                  AND YEAR(tgl_transaksi) = ?
+                SELECT ROUND(AVG(p.rate), 2)
+                FROM penjualan p
+                WHERE MONTH(p.tgl_transaksi) = ? 
+                  AND YEAR(p.tgl_transaksi) = ?
+                  AND p.NIP = ky.NIP
+                  AND p.id_game = pf.id_game
             ) AS rata_rata_rate,
             g.nama_game
         FROM karyawan ky
@@ -822,8 +825,8 @@ exports.getEstimasiGajiByNIP = (req, res) => {
     `;
 
     const queryParams = [
-        bulan, tahun,          // AVG rate seluruh penjualan
-        bulan, tahun, nip,     // ambil jumlah terakhir dari koin
+        bulan, tahun,          // AVG rate dengan filter id_game
+        bulan, tahun, nip,     // koin terakhir
         nip, bulan, tahun      // filter utama
     ];
 
@@ -832,7 +835,7 @@ exports.getEstimasiGajiByNIP = (req, res) => {
         queryParams.push(namaGame);
     }
 
-    sql += " GROUP BY ky.NIP, ky.nama, k.jumlah, g.nama_game";
+    sql += " GROUP BY ky.NIP, ky.nama, k.jumlah, g.nama_game, pf.id_game";
 
     db.query(sql, queryParams, (err, results) => {
         if (err) {
