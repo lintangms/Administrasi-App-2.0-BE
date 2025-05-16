@@ -799,12 +799,12 @@ exports.getEstimasiGajiByNIP = (req, res) => {
             ky.nama,
             COALESCE(k.jumlah, 0) AS total_koin,
             (
-                SELECT ROUND(AVG(p.rate), 2)
+                SELECT ROUND(AVG(p.rate))
                 FROM penjualan p
-                WHERE MONTH(p.tgl_transaksi) = ? 
+                WHERE MONTH(p.tgl_transaksi) = ?
                   AND YEAR(p.tgl_transaksi) = ?
                   AND p.NIP = ky.NIP
-                  AND p.id_game = pf.id_game
+                  AND p.id_game = g.id_game
             ) AS rata_rata_rate,
             g.nama_game
         FROM karyawan ky
@@ -825,8 +825,8 @@ exports.getEstimasiGajiByNIP = (req, res) => {
     `;
 
     const queryParams = [
-        bulan, tahun,          // AVG rate dengan filter id_game
-        bulan, tahun, nip,     // koin terakhir
+        bulan, tahun,          // rata-rata rate per NIP dan ID_GAME
+        bulan, tahun, nip,     // ambil koin terakhir
         nip, bulan, tahun      // filter utama
     ];
 
@@ -835,7 +835,7 @@ exports.getEstimasiGajiByNIP = (req, res) => {
         queryParams.push(namaGame);
     }
 
-    sql += " GROUP BY ky.NIP, ky.nama, k.jumlah, g.nama_game, pf.id_game";
+    sql += " GROUP BY ky.NIP, ky.nama, k.jumlah, g.nama_game, g.id_game";
 
     db.query(sql, queryParams, (err, results) => {
         if (err) {
