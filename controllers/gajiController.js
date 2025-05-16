@@ -706,22 +706,20 @@ exports.getAllEstimasiGaji = (req, res) => {
 
     const bulan = req.query.bulan ? parseInt(req.query.bulan) : currentMonth;
     const tahun = req.query.tahun ? parseInt(req.query.tahun) : currentYear;
-    const namaGame = req.query.nama_game || null;
 
-    let sql = `
+    const sql = `
         SELECT 
             k.NIP,
             ky.nama,
             k.jumlah AS total_koin,
             (
-                SELECT ROUND(AVG(p.rate), 2)
+                SELECT ROUND(AVG(p.rate))
                 FROM penjualan p
                 WHERE p.NIP = k.NIP 
-                  AND MONTH(p.tgl_transaksi) = ? 
+                  AND MONTH(p.tgl_transaksi) = ?
                   AND YEAR(p.tgl_transaksi) = ?
-                  AND p.id_game = pf.id_game
-            ) AS rata_rata_rate,
-            g.nama_game
+                  AND p.id_game = 1
+            ) AS rata_rata_rate
         FROM koin k
         INNER JOIN (
             SELECT NIP, MAX(id_koin) AS max_id
@@ -731,18 +729,13 @@ exports.getAllEstimasiGaji = (req, res) => {
         ) latest_koin ON k.NIP = latest_koin.NIP AND k.id_koin = latest_koin.max_id
         INNER JOIN karyawan ky ON k.NIP = ky.NIP
         INNER JOIN perolehan_farming pf ON pf.NIP = k.NIP
-        INNER JOIN game g ON pf.id_game = g.id_game
         WHERE MONTH(pf.periode) = ? AND YEAR(pf.periode) = ?
+          AND pf.id_game = 1
+        GROUP BY k.NIP, ky.nama, k.jumlah
+        ORDER BY k.NIP ASC
     `;
 
     const queryParams = [bulan, tahun, bulan, tahun, bulan, tahun];
-
-    if (namaGame) {
-        sql += " AND g.nama_game = ?";
-        queryParams.push(namaGame);
-    }
-
-    sql += " GROUP BY k.NIP, ky.nama, k.jumlah, g.nama_game, pf.id_game ORDER BY k.NIP ASC";
 
     db.query(sql, queryParams, (err, results) => {
         if (err) {
@@ -763,7 +756,6 @@ exports.getAllEstimasiGaji = (req, res) => {
             return {
                 NIP: item.NIP,
                 nama: item.nama,
-                nama_game: item.nama_game,
                 total_koin,
                 rata_rata_rate: original_rate,
                 rate_dikurangi,
@@ -777,6 +769,7 @@ exports.getAllEstimasiGaji = (req, res) => {
         });
     });
 };
+
 
 
 exports.getEstimasiGajiByNIP = (req, res) => {
