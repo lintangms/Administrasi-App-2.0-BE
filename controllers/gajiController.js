@@ -217,6 +217,209 @@ exports.getGajiBaru = (req, res) => {
     });
 };
 
+
+exports.addGajiLama = (req, res) => {
+    const { NIP, bulan, tahun, game, ket } = req.body;
+
+    if (!NIP || !bulan || !tahun || !game) {
+        return res.status(400).json({ message: 'NIP, bulan, tahun, dan game harus diisi' });
+    }
+
+    const periode = `${tahun}-${String(bulan).padStart(2, '0')}-01`;
+
+    if (game === "WOW") {
+        // Ambil koin terakhir (jumlah) dan total dijual pada bulan yang sama
+        const getLatestKoinQuery = `
+            SELECT jumlah 
+            FROM koin 
+            WHERE NIP = ? 
+            ORDER BY id_koin DESC 
+            LIMIT 1
+        `;
+
+        db.query(getLatestKoinQuery, [NIP], (err, latestKoinResults) => {
+            if (err) {
+                return res.status(500).json({ message: 'Error mengambil data koin terakhir', error: err });
+            }
+
+            if (latestKoinResults.length === 0) {
+                return res.status(404).json({ message: 'Tidak ada data koin untuk NIP ini' });
+            }
+
+            const latest_jumlah = latestKoinResults[0].jumlah;
+
+            // Ambil total dijual pada bulan yang sama
+            const getSoldKoinQuery = `
+                SELECT SUM(COALESCE(dijual, 0)) as total_dijual
+                FROM koin 
+                WHERE NIP = ? 
+                AND MONTH(tanggal) = ? 
+                AND YEAR(tanggal) = ?
+            `;
+
+            db.query(getSoldKoinQuery, [NIP, bulan, tahun], (err, soldResults) => {
+                if (err) {
+                    return res.status(500).json({ message: 'Error mengambil data koin terjual', error: err });
+                }
+
+                const total_sold = soldResults[0].total_dijual || 0;
+                const total_unsold = latest_jumlah - total_sold;
+                const total_koin = total_sold + total_unsold; // Ini yang digunakan untuk perhitungan gaji
+
+                const getRateQuery = `
+                    SELECT rata_rata_rate 
+                    FROM rate 
+                    WHERE tanggal = ? 
+                    AND id_game = (SELECT id_game FROM game WHERE nama_game = 'WOW' LIMIT 1)
+                `;
+
+                db.query(getRateQuery, [periode], (err, rateResults) => {
+                    if (err) {
+                        return res.status(500).json({ message: 'Error mengambil rata-rata rate', error: err });
+                    }
+
+                    if (rateResults.length === 0) {
+                        return res.status(404).json({ message: 'Rata-rata rate tidak ditemukan untuk game WOW pada periode ini' });
+                    }
+
+                    const rata_rata_rate = rateResults[0].rata_rata_rate;
+                    const gaji_kotor = total_koin * rata_rata_rate;
+
+                    const insertGajiQuery = `
+                        INSERT INTO gaji (periode, tgl_transaksi, NIP, gaji_kotor, id_game, ket)
+                        VALUES (?, NOW(), ?, ?, (SELECT id_game FROM game WHERE nama_game = 'WOW' LIMIT 1), ?)
+                    `;
+
+                    db.query(insertGajiQuery, [periode, NIP, gaji_kotor, ket], (err, insertResults) => {
+                        if (err) {
+                            return res.status(500).json({ message: 'Error menyimpan data gaji', error: err });
+                        }
+
+                        res.status(201).json({
+                            message: 'Gaji berhasil ditambahkan',
+                            data: {
+                                NIP,
+                                periode,
+                                latest_jumlah,
+                                total_sold,
+                                total_unsold,
+                                total_koin,
+                                rata_rata_rate,
+                                gaji_kotor,
+                                ket
+                            }
+                        });
+                    });
+                });
+            });
+        });
+    } else {
+        // Untuk game selain WOW
+        // Ambil koin terakhir (jumlah) dan total dijual pada bulan yang sama  
+        const getLatestKoinQuery = `
+            SELECT jumlah 
+            FROM koin 
+            WHERE NIP = ? 
+            ORDER BY id_koin DESC 
+            LIMIT 1
+        `;
+
+        db.query(getLatestKoinQuery, [NIP], (err, latestKoinResults) => {
+            if (err) {
+                return res.status(500).json({ message: 'Error mengambil data koin terakhir', error: err });
+            }
+
+            if (latestKoinResults.length === 0) {
+                return res.status(404).json({ message: 'Tidak ada data koin untuk NIP ini' });
+            }
+
+            const latest_jumlah = latestKoinResults[0].jumlah;
+
+            // Ambil total dijual pada bulan yang sama
+            const getSoldKoinQuery = `
+                SELECT SUM(COALESCE(dijual, 0)) as total_dijual
+                FROM koin 
+                WHERE NIP = ? 
+                AND MONTH(tanggal) = ? 
+                AND YEAR(tanggal) = ?
+            `;
+
+            db.query(getSoldKoinQuery, [NIP, bulan, tahun], (err, soldResults) => {
+                if (err) {
+                    return res.status(500).json({ message: 'Error mengambil data koin terjual', error: err });
+                }
+
+                const total_sold = soldResults[0].total_dijual || 0;
+                const total_unsold = latest_jumlah - total_sold;
+                const total_koin = total_sold + total_unsold; // Ini yang digunakan untuk perhitungan gaji
+
+                const getRateQuery = `
+                    SELECT rata_rata_rate 
+                    FROM rate 
+                    WHERE tanggal = ?
+                `;
+
+                db.query(getRateQuery, [periode], (err, rateResults) => {
+                    if (err) {
+                        return res.status(500).json({ message: 'Error mengambil rata-rata rate', error: err });
+                    }
+
+                    if (rateResults.length === 0) {
+                        return res.status(404).json({ message: 'Rata-rata rate tidak ditemukan untuk periode ini' });
+                    }
+
+                    const rata_rata_rate = rateResults[0].rata_rata_rate;
+                    const gaji_kotor = total_koin * rata_rata_rate;
+
+                    // Ambil id_game dari koin
+                    const getGameIdQuery = `
+                        SELECT DISTINCT id_game 
+                        FROM koin 
+                        WHERE NIP = ? 
+                        LIMIT 1
+                    `;
+
+                    db.query(getGameIdQuery, [NIP], (err, gameResults) => {
+                        if (err) {
+                            return res.status(500).json({ message: 'Error mengambil id_game', error: err });
+                        }
+
+                        const id_game = gameResults.length > 0 ? gameResults[0].id_game : null;
+
+                        const insertGajiQuery = `
+                            INSERT INTO gaji (periode, tgl_transaksi, NIP, gaji_kotor, id_game, ket)
+                            VALUES (?, NOW(), ?, ?, ?, ?)
+                        `;
+
+                        db.query(insertGajiQuery, [periode, NIP, gaji_kotor, id_game, ket], (err, insertResults) => {
+                            if (err) {
+                                return res.status(500).json({ message: 'Error menyimpan data gaji', error: err });
+                            }
+
+                            res.status(201).json({
+                                message: 'Gaji berhasil ditambahkan',
+                                data: {
+                                    NIP,
+                                    periode,
+                                    latest_jumlah,
+                                    total_sold,
+                                    total_unsold,
+                                    total_koin,
+                                    rata_rata_rate,
+                                    gaji_kotor,
+                                    ket
+                                }
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    }
+};
+
+
+
 exports.getGajiLama = (req, res) => {
     const { nama, bulan, tahun } = req.query;
 
@@ -236,8 +439,8 @@ exports.getGajiLama = (req, res) => {
             g.tunjangan_jabatan, 
             g.THP, 
             g.tgl_transaksi,
-            COALESCE(SUM(u.koin), 0) AS total_unsold_koin,
-            COALESCE(SUM(koin.dijual), 0) AS total_dijual
+            COALESCE(koin_sold.total_dijual, 0) AS total_sold_koin,
+            COALESCE(latest_koin.jumlah - koin_sold.total_dijual, 0) AS total_unsold_koin
         FROM gaji g
         INNER JOIN karyawan k ON g.NIP = k.NIP
         INNER JOIN game gm ON k.id_game = gm.id_game
@@ -247,13 +450,25 @@ exports.getGajiLama = (req, res) => {
             WHERE MONTH(tgl_transaksi) = ? AND YEAR(tgl_transaksi) = ?
             GROUP BY NIP
         ) latest ON g.NIP = latest.NIP AND g.id_gaji = latest.max_id
-        LEFT JOIN unsold u ON g.NIP = u.NIP AND MONTH(u.tanggal) = ? AND YEAR(u.tanggal) = ?
         LEFT JOIN (
-            SELECT NIP, SUM(dijual) AS dijual
+            SELECT 
+                NIP, 
+                SUM(COALESCE(dijual, 0)) AS total_dijual
             FROM koin
-            WHERE dijual IS NOT NULL
+            WHERE MONTH(tanggal) = ? AND YEAR(tanggal) = ?
             GROUP BY NIP
-        ) koin ON g.NIP = koin.NIP
+        ) koin_sold ON g.NIP = koin_sold.NIP
+        LEFT JOIN (
+            SELECT 
+                k1.NIP,
+                k1.jumlah
+            FROM koin k1
+            INNER JOIN (
+                SELECT NIP, MAX(id_koin) AS max_id
+                FROM koin
+                GROUP BY NIP
+            ) k2 ON k1.NIP = k2.NIP AND k1.id_koin = k2.max_id
+        ) latest_koin ON g.NIP = latest_koin.NIP
         WHERE k.status = 'LAMA'
     `;
 
@@ -264,7 +479,7 @@ exports.getGajiLama = (req, res) => {
         params.push(`%${nama}%`);
     }
 
-    sql += " GROUP BY g.id_gaji, g.NIP, k.nama, gm.nama_game, g.gaji_kotor, g.potongan, g.kasbon, g.tunjangan_jabatan, g.THP, g.tgl_transaksi";
+    sql += " GROUP BY g.id_gaji, g.NIP, k.nama, gm.nama_game, g.gaji_kotor, g.potongan, g.kasbon, g.tunjangan_jabatan, g.THP, g.tgl_transaksi, koin_sold.total_dijual, latest_koin.jumlah";
     sql += " ORDER BY g.tgl_transaksi DESC";
 
     db.query(sql, params, (err, results) => {
@@ -436,142 +651,6 @@ exports.updateUnsoldGaji = (req, res) => {
             });
         });
     });
-};
-
-
-exports.addGajiLama = (req, res) => {
-    const { NIP, bulan, tahun, game, ket } = req.body;
-
-    if (!NIP || !bulan || !tahun || !game) {
-        return res.status(400).json({ message: 'NIP, bulan, tahun, dan game harus diisi' });
-    }
-
-    const periode = `${tahun}-${String(bulan).padStart(2, '0')}-01`;
-
-    if (game === "WOW") {
-        let getLatestKoinQuery = `
-            SELECT jumlah 
-            FROM koin 
-            WHERE NIP = ? 
-            ORDER BY id_koin DESC 
-            LIMIT 1
-        `;
-
-        db.query(getLatestKoinQuery, [NIP], (err, koinResults) => {
-            if (err) {
-                return res.status(500).json({ message: 'Error mengambil data koin', error: err });
-            }
-
-            if (koinResults.length === 0) {
-                return res.status(404).json({ message: 'Tidak ada data koin untuk NIP ini' });
-            }
-
-            const total_koin = koinResults[0].jumlah;
-
-            let getRateQuery = `
-                SELECT rata_rata_rate 
-                FROM rate 
-                WHERE tanggal = ? 
-                AND id_game = (SELECT id_game FROM game WHERE nama_game = 'WOW' LIMIT 1)
-            `;
-
-            db.query(getRateQuery, [periode], (err, rateResults) => {
-                if (err) {
-                    return res.status(500).json({ message: 'Error mengambil rata-rata rate', error: err });
-                }
-
-                if (rateResults.length === 0) {
-                    return res.status(404).json({ message: 'Rata-rata rate tidak ditemukan untuk game WOW pada periode ini' });
-                }
-
-                const rata_rata_rate = rateResults[0].rata_rata_rate;
-                const gaji_kotor = total_koin * rata_rata_rate;
-
-                let insertGajiQuery = `
-                    INSERT INTO gaji (periode, tgl_transaksi, NIP, gaji_kotor, id_game, ket)
-                    VALUES (?, NOW(), ?, ?, (SELECT id_game FROM game WHERE nama_game = 'WOW' LIMIT 1), ?)
-                `;
-
-                db.query(insertGajiQuery, [periode, NIP, gaji_kotor, ket], (err, insertResults) => {
-                    if (err) {
-                        return res.status(500).json({ message: 'Error menyimpan data gaji', error: err });
-                    }
-                    res.status(201).json({
-                        message: 'Gaji berhasil ditambahkan',
-                        data: {
-                            NIP,
-                            periode,
-                            total_koin,
-                            rata_rata_rate,
-                            gaji_kotor,
-                            ket
-                        }
-                    });
-                });
-            });
-        });
-    } else {
-        let getDetailKoinQuery = `
-            SELECT tgl_transaksi, koin_dijual 
-            FROM penjualan
-            WHERE NIP = ? AND MONTH(tgl_transaksi) = ? AND YEAR(tgl_transaksi) = ?
-            ORDER BY tgl_transaksi ASC
-        `;
-
-        db.query(getDetailKoinQuery, [NIP, bulan, tahun], (err, koinResults) => {
-            if (err) {
-                return res.status(500).json({ message: 'Error mengambil data koin', error: err });
-            }
-
-            if (koinResults.length === 0) {
-                return res.status(404).json({ message: 'Tidak ada data penjualan untuk NIP ini pada periode yang dipilih' });
-            }
-
-            const total_koin = koinResults.reduce((sum, item) => sum + item.koin_dijual, 0);
-
-            let getRateQuery = `
-                SELECT rata_rata_rate
-                FROM rate
-                WHERE tanggal = ?
-            `;
-
-            db.query(getRateQuery, [periode], (err, rateResults) => {
-                if (err) {
-                    return res.status(500).json({ message: 'Error mengambil rata-rata rate', error: err });
-                }
-
-                if (rateResults.length === 0) {
-                    return res.status(404).json({ message: 'Rata-rata rate tidak ditemukan untuk periode ini' });
-                }
-
-                const rata_rata_rate = rateResults[0].rata_rata_rate;
-                const gaji_kotor = total_koin * rata_rata_rate;
-
-                let insertGajiQuery = `
-                    INSERT INTO gaji (periode, tgl_transaksi, NIP, gaji_kotor, id_game, ket)
-                    VALUES (?, NOW(), ?, ?, (SELECT id_game FROM penjualan WHERE NIP = ? LIMIT 1), ?)
-                `;
-
-                db.query(insertGajiQuery, [periode, NIP, gaji_kotor, NIP, ket], (err, insertResults) => {
-                    if (err) {
-                        return res.status(500).json({ message: 'Error menyimpan data gaji', error: err });
-                    }
-                    res.status(201).json({
-                        message: 'Gaji berhasil ditambahkan',
-                        data: {
-                            NIP,
-                            periode,
-                            transaksi: koinResults,
-                            total_koin,
-                            rata_rata_rate,
-                            gaji_kotor,
-                            ket
-                        }
-                    });
-                });
-            });
-        });
-    }
 };
 
 exports.getKoinDetails = (req, res) => {
